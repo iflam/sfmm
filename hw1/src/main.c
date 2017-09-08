@@ -27,6 +27,13 @@ int main(int argc, char **argv)
         USAGE(*argv, EXIT_SUCCESS);
     }
 
+    else if(mode == 0){
+        USAGE(*argv,EXIT_FAILURE);
+    }
+    else{
+        printf("Mode is: %d\n",mode);
+    }
+
     return EXIT_SUCCESS;
 }
 
