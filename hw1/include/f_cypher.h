@@ -3,4 +3,5 @@
 #endif
 
 #include "const.h"
-int f_cypher(int a, int b);
+int f_encode(int row, int col);
+int f_decode(int row, int col);

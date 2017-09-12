@@ -31,7 +31,6 @@
 int isNumber(int size, char* c){
     int myBool = 1;
     for(int i = 0; i < size ;i++){
-        printf("char %d: %c\n",i,*(c+i));
         if(!(*(c+i) < 58 && *(c+i) > 47)){
             myBool = 0;
             break;
@@ -67,7 +66,6 @@ unsigned short validargs(int argc, char **argv) {
     //First we will find those args bruv. So, the first arg we need is *(argv+1), arg 2 is *(argv+2), etc.
     short unsigned returnValue = 0;
     char firstCommand =  *(*(argv+1)+1);
-    printf("First Command: %c\n", firstCommand);
     //IF IS -h, 1000000000000000
     int alph_length = 0;
     if(firstCommand == 'h'){
@@ -89,7 +87,6 @@ unsigned short validargs(int argc, char **argv) {
         return 0;
     }
     char secondCommand = *(*(argv+2)+1); //should be d or e.
-    printf("Second Command: %c\n", secondCommand);
     //IF IS -d, 01100000????????
     if(secondCommand == 'd'){
         returnValue = returnValue | 8192;
@@ -103,23 +100,17 @@ unsigned short validargs(int argc, char **argv) {
     char thirdCommand = '\0', fourthCommand = '\0', fifthCommand = '\0';
     if(argc > 3){
         thirdCommand = *(*(argv+3)+1);
-        printf("Third Command: %c\n", thirdCommand);
         if(argc > 5){
             fourthCommand = *(*(argv+5)+1);
-            printf("Fourth Command: %c\n", fourthCommand);
             if(thirdCommand == fourthCommand){
-                printf("cmd 3 and 4 are the same\n");
                 return 0;
             }
             if(argc > 7){
                 fifthCommand = *(*(argv+7)+1);
-                printf("Fifth Command: %c\n", fifthCommand);
                 if(thirdCommand == fifthCommand){
-                    printf("cmd 3 and 5 are the same\n");
                     return 0;
                 }
                 if(fourthCommand == fifthCommand){
-                    printf("cmd 4 and 5 are the same\n");
                     return 0;
                 }
             }
@@ -130,80 +121,57 @@ unsigned short validargs(int argc, char **argv) {
     char *keyVal = 0;
     if(thirdCommand != '\0'){
         if(thirdCommand == 'r'){
-            printf("third command is r\n");
             rCmd = thirdCommand;
             rVal = (convertToNum(*(argv+4)));
-            printf("command arg is %d\n",rVal);
         }
         else if (thirdCommand == 'c'){
-            printf("third command is c\n");
             cCmd = thirdCommand;
             cVal = (convertToNum(*(argv+4)));
-            printf("command arg is %d\n",cVal);
         }
         else if (thirdCommand == 'k'){
-            printf("third command is k\n");
             keyCmd = thirdCommand;
             keyVal = *(argv+4);
-            printf("command arg is %s\n",keyVal);
         }
         else {return 0;}
     }
     if(fourthCommand != '\0'){
         if(fourthCommand == 'r'){
-            printf("fourth command is r\n");
             rCmd = fourthCommand;
             rVal = (convertToNum(*(argv+6)));
-            printf("command arg is %d\n",rVal);
         }
         else if (fourthCommand == 'c'){
-            printf("fourth command is c\n");
             cCmd = fourthCommand;
             cVal = (convertToNum(*(argv+6)));
-            printf("command arg is %d\n",cVal);
         }
         else if (fourthCommand == 'k'){
-            printf("fourth command is k\n");
             keyCmd = fourthCommand;
             keyVal = *(argv+6);
-            printf("command arg is %s\n",keyVal);
         }
         else {return 0;}
     }
     if(fifthCommand != '\0'){
         if(fifthCommand == 'r'){
-            printf("fifth command is r\n");
             rCmd = fifthCommand;
             rVal = (convertToNum(*(argv+8)));
-            printf("command arg is %d\n",rVal);
         }
         else if (fifthCommand == 'c'){
-            printf("fifth command is c\n");
             cCmd = fifthCommand;
             cVal = (convertToNum(*(argv+8)));
-            printf("command arg is %d\n",cVal);
         }
         else if (fifthCommand == 'k'){
-            printf("fifth command is k\n");
             keyCmd = fifthCommand;
             keyVal = *(argv+8);
-            printf("command arg is %s\n",keyVal);
         }
         else {return 0;}
     }
     //CHECK IF THERE IS -r
     if(rCmd > 0){
-        puts("Went into r");
         if(rVal <9 || rVal >15){ //CHECK FOR INVALID ROWNUM
-            puts("r is less than 9 or greater than 15!");
             return 0;
         }
         else{
-            printf("return value is before... %u\n",returnValue);
             int addVal = rVal << 4;
-            printf("the value we are adding is: %u\n", addVal);
             returnValue = returnValue | addVal; //adds that number to the binary number
-            printf("return value is now... %u\n",returnValue);
         }
     }
     else{
@@ -212,14 +180,10 @@ unsigned short validargs(int argc, char **argv) {
     }
     if(cCmd > 0){
         if(cVal <9 || cVal >15){ //CHECK FOR INVALID ROWNUM
-            puts("c is less than 9 or greater than 15!");
             return 0;
         }
         else{
-            printf("return value is before... %u\n",returnValue);
-            printf("the value we are adding is: %u\n", cVal);
             returnValue = returnValue | cVal; //adds that number to the binary number
-            printf("return value is now... %u\n",returnValue);
         }
     }
     else{
@@ -228,22 +192,16 @@ unsigned short validargs(int argc, char **argv) {
     }
     if(keyCmd > 0){
         if(firstCommand == 'f'){
-            printf("Freq: %s\n",fm_alphabet);
                 char* current_char = keyVal;
-                printf("Chars are: %s\n",keyVal);
                 char prev_char = '\0';
                 for(int i = 0; *current_char != '\0'; i++){
-                    printf("current char: %c\n",*current_char);
-                    printf("prev char: %c\n",prev_char);
                     if(*current_char == prev_char){
-                        printf("char %c is the same as char %c",*current_char, prev_char);
                         return 0;
                     }
                     else{
                         int isSame = 0;
                         for(int k = 0; *(fm_alphabet+k) != '\0';k++){
                             int exists = 1; //FIX THIS!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~``
-                            printf("current fm alph: %c\n",*(fm_alphabet+k));
                             if(*current_char == *(fm_alphabet+k)){
                                 isSame = 1;
                                 break;
@@ -262,38 +220,33 @@ unsigned short validargs(int argc, char **argv) {
         }
         else if(firstCommand == 'p'){
             extern char* polybius_alphabet;
-            printf("Poly: %same\n",polybius_alphabet);
             char* current_char = keyVal;
-                printf("Chars are: %s\n",keyVal);
                 char prev_char = '\0';
                 for(int i = 0; *current_char != '\0'; i++){
-                    printf("current char: %c\n",*current_char);
-                    printf("prev char: %c\n",prev_char);
                     if(*current_char == prev_char){
-                        printf("char %c is the same as char %c",*current_char, prev_char);
                         return 0;
                     }
                     else{
                         int isSame = 0;
                         for(int k = 0; *(polybius_alphabet+k) != '\0';k++){
                             int exists = 1; //FIX THIS!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~``
-                            printf("current fm alph: %c\n",*(polybius_alphabet+k));
                             if(*current_char == *(polybius_alphabet+k)){
                                 isSame = 1;
                                 break;
                             }
                         }
                         if(isSame == 0){
-                            puts("This char doesn't exist.");
                             return 0;
                         }
                     }
-                    puts("made it here");
                     prev_char = *current_char;
                     current_char = current_char+1;
                 }
                 key = keyVal;
         }
+    }
+    else{
+        key = '\0';
     }
     if(cVal*rVal < alph_length){
         return 0;
