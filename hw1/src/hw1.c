@@ -208,11 +208,9 @@ unsigned short validargs(int argc, char **argv) {
                             }
                         }
                         if(isSame == 0){
-                            puts("This char doesn't exist.");
                             return 0;
                         }
                     }
-                    puts("made it here");
                     prev_char = *current_char;
                     current_char = current_char+1;
                 }

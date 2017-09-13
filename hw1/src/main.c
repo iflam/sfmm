@@ -40,12 +40,10 @@ int main(int argc, char **argv)
         col = mode & 0x000F;
         if(mode & 0x4000){
             if(mode & 0x2000){
-                puts("-f -d");
                 good_cypher = f_decode();
 
             }
             else{
-                puts("-f -e");
                 good_cypher = f_encode();
             }
         }
@@ -58,7 +56,6 @@ int main(int argc, char **argv)
             }
         }
         if(good_cypher == 0){
-            puts("coolioboolio");
         }
     }
 
