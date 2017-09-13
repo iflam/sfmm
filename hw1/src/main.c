@@ -3,6 +3,7 @@
 #include "hw1.h"
 #include "debug.h"
 #include "p_cypher.h"
+#include "f_cypher.h"
 
 #ifdef _STRING_H
 #error "Do not #include <string.h>. You will get a ZERO."
@@ -40,10 +41,12 @@ int main(int argc, char **argv)
         if(mode & 0x4000){
             if(mode & 0x2000){
                 puts("-f -d");
+                good_cypher = f_decode();
 
             }
             else{
                 puts("-f -e");
+                good_cypher = f_encode();
             }
         }
         else{
@@ -54,8 +57,8 @@ int main(int argc, char **argv)
                 good_cypher = p_encode(row,col);
             }
         }
-        if(good_cypher){
-            puts("coolio");
+        if(good_cypher == 0){
+            puts("coolioboolio");
         }
     }
 
