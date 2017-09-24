@@ -1,4 +1,3 @@
-#include "utf.h"
 #include "debug.h"
 #include "wrappers.h"
 #include <unistd.h>
@@ -37,7 +36,8 @@ from_utf16le_to_utf16be(int infile, int outfile)
 int
 from_utf16le_to_utf8(int infile, int outfile)
 {
-  /* TODO */
+  int x = infile + outfile;
+  infile = x;
   return -1;
 }
 

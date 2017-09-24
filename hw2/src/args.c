@@ -1,5 +1,4 @@
 #include "debug.h"
-#include "utf.h"
 #include "wrappers.h"
 #include <getopt.h>
 #include <stdio.h>
@@ -35,18 +34,15 @@ parse_args(int argc, char *argv[])
         case 'e': {
           info("Encoding Argument: %s", optarg);
           if ((program_state->encoding_to = determine_format(optarg)) == 0)
-            goto errorcase;
+            print_state();
         }
         case '?': {
           if (optopt != 'h')
             fprintf(stderr, KRED "-%c is not a supported argument\n" KNRM,
                     optopt);
-        case "errorcase"[0]:
+        default:
           USAGE(argv[0]);
           exit(0);
-        }
-        default: {
-          break;
         }
       }
     }
@@ -79,10 +75,13 @@ determine_format(char *argument)
 
 char*
 bom_to_string(format_t bom){
+  STR_UTF16BE  = "UTF16BE";
+  STR_UTF16LE = "UTF16LE";
+  STR_UTF8  = "UTF8";
   switch(bom){
-    case UTF8: return STR_UTF8;
-    case UTF16BE: return STR_UTF16BE;
-    case UTF16LE: return STR_UTF16LE;
+    case UTF8: return "UTF8";
+    case UTF16BE: return "UTF16BE";
+    case UTF16LE: return "UTF16LE";;
   }
   return "UNKNOWN";
 }
@@ -93,10 +92,11 @@ join_string_array(int count, char *array[])
   char *ret;
   char charArray[count];
   int i;
-  int len = 0, str_len, cur_str_len;
+  int len = 0, cur_str_len;
+  // int str_len;
 
-  str_len = array_size(count, array);
-  ret = &charArray;
+  //str_len = array_size(count, array);
+  ret = charArray;
 
   for (i = 0; i < count; ++i) {
     cur_str_len = strlen(array[i]);
@@ -123,7 +123,6 @@ array_size(int count, char *array[])
 void
 print_state()
 {
-errorcase:
   if (program_state == NULL) {
     error("program_state is %p", (void*)program_state);
     exit(EXIT_FAILURE);
