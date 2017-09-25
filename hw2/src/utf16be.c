@@ -44,9 +44,38 @@ from_utf16be_to_utf16le(int infile, int outfile)
 int
 from_utf16be_to_utf8(int infile, int outfile)
 {
-  int x = infile+outfile;
-  infile = x;
-  return -1;
+  int bom;
+  utf16_glyph_t buf;
+  ssize_t bytes_read;
+  size_t bytes_to_write;
+  int ret = 0;
+
+  bom = UTF16LE;
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  reverse_bytes(&bom, 2);
+#endif
+  write_to_bigendian(outfile, &bom, 2);
+
+  while ((bytes_read = read_to_bigendian(infile, &(buf.upper_bytes), 2)) > 0) {
+    bytes_to_write = 2;
+    reverse_bytes(&(buf.upper_bytes), 2);
+    if(buf.upper_bytes == bom){
+      continue;
+    }
+    if(buf.upper_bytes == 0xa000 || buf.upper_bytes == 0xa00 || buf.upper_bytes == 0xa0 || buf.upper_bytes == 0xa){
+      break;
+    }
+    if(is_lower_surrogate_pair(buf)) {
+      if((bytes_read = read_to_bigendian(infile, &(buf.lower_bytes), 2)) < 0) {
+        break;
+      }
+      reverse_bytes(&(buf.lower_bytes), 2);
+      bytes_to_write += 2;
+    }
+    write_to_bigendian(outfile, &buf, bytes_to_write);
+  }
+  ret = bytes_read;
+  return ret;
 }
 
 utf16_glyph_t
