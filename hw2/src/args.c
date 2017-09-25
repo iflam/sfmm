@@ -29,20 +29,26 @@ parse_args(int argc, char *argv[])
     debug("%d optind: %d", i, optind);
     debug("%d optopt: %d", i, optopt);
     debug("%d argv[optind]: %s", i, argv[optind]);
-    if ((option = getopt(argc, argv, "+ei:")) != -1) {
+    if ((option = getopt(argc, argv, "+he:")) != -1) {
       switch (option) {
         case 'e': {
           info("Encoding Argument: %s", optarg);
+          if(optarg == NULL){
+            print_state();
+          }
           if ((program_state->encoding_to = determine_format(optarg)) == 0)
             print_state();
         }
+        break;
         case '?': {
           if (optopt != 'h')
             fprintf(stderr, KRED "-%c is not a supported argument\n" KNRM,
                     optopt);
+          break;
         default:
           USAGE(argv[0]);
           exit(0);
+          break;
         }
       }
     }
@@ -58,12 +64,14 @@ parse_args(int argc, char *argv[])
       optind++;
     }
   }
-  free(joined_argv);
 }
 
 format_t
 determine_format(char *argument)
 {
+  STR_UTF16BE  = "UTF16BE";
+  STR_UTF16LE = "UTF16LE";
+  STR_UTF8  = "UTF8";
   if (strcmp(argument, STR_UTF16LE) == 0)
     return UTF16LE;
   if (strcmp(argument, STR_UTF16BE) == 0)
@@ -90,13 +98,12 @@ char*
 join_string_array(int count, char *array[])
 {
   char *ret;
-  char charArray[count];
   int i;
   int len = 0, cur_str_len;
-  // int str_len;
+  int str_len;
 
-  //str_len = array_size(count, array);
-  ret = charArray;
+  str_len = array_size(count, array);
+  ret = malloc(str_len);
 
   for (i = 0; i < count; ++i) {
     cur_str_len = strlen(array[i]);
@@ -105,7 +112,6 @@ join_string_array(int count, char *array[])
     memecpy(ret + len, " ", 1);
     len += 1;
   }
-
   return ret;
 }
 

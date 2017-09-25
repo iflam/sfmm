@@ -20,6 +20,12 @@ from_utf16le_to_utf16be(int infile, int outfile)
   while ((bytes_read = read_to_bigendian(infile, &(buf.upper_bytes), 2)) > 0) {
     bytes_to_write = 2;
     reverse_bytes(&(buf.upper_bytes), 2);
+    if(buf.upper_bytes == bom){
+      continue;
+    }
+    if(buf.upper_bytes == 0xa000 || buf.upper_bytes == 0xa00 || buf.upper_bytes == 0xa0 || buf.upper_bytes == 0xa){
+      break;
+    }
     if(is_lower_surrogate_pair(buf)) {
       if((bytes_read = read_to_bigendian(infile, &(buf.lower_bytes), 2)) < 0) {
         break;

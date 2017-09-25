@@ -19,7 +19,9 @@ main(int argc, char *argv[])
     close((long)program_state);
   }
   //I think this is how this works
-  free((void*)((long)outfile));
-  free((void*)((long)infile));
+  // free((void*)((long)outfile));
+  // free((void*)((long)infile));
+  close(outfile);
+  close(infile);
   return EXIT_SUCCESS;
 }
