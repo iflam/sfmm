@@ -44,6 +44,7 @@ parse_args(int argc, char *argv[])
           if (optopt != 'h')
             fprintf(stderr, KRED "-%c is not a supported argument\n" KNRM,
                     optopt);
+            exit(EXIT_FAILURE);
           break;
         default:
           USAGE(argv[0]);
