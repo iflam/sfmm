@@ -23,5 +23,6 @@ main(int argc, char *argv[])
   // free((void*)((long)infile));
   close(outfile);
   close(infile);
+  free(program_state);
   return EXIT_SUCCESS;
 }

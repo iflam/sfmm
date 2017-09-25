@@ -48,8 +48,6 @@ from_utf16le_to_utf8(int infile, int outfile)
   utf16_glyph_t utf16_buf;
   ssize_t bytes_read;
   size_t size_of_glyph;
-  //code_point_t surr_point;
-  //code_point_t surr_point_low;
   code_point_t code_point;
   utf8_glyph_t utf8_buf;
 

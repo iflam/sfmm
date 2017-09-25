@@ -44,35 +44,41 @@ from_utf16be_to_utf16le(int infile, int outfile)
 int
 from_utf16be_to_utf8(int infile, int outfile)
 {
-  int bom;
-  utf16_glyph_t buf;
-  ssize_t bytes_read;
-  size_t bytes_to_write;
   int ret = 0;
+  int bom;
+  int curbom;
+  utf16_glyph_t utf16_buf;
+  ssize_t bytes_read;
+  size_t size_of_glyph;
+  code_point_t code_point;
+  utf8_glyph_t utf8_buf;
 
-  bom = UTF16LE;
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-  reverse_bytes(&bom, 2);
-#endif
-  write_to_bigendian(outfile, &bom, 2);
+  bom = UTF8;
+  curbom = UTF16BE;
+  #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  reverse_bytes(&curbom, 2);
+  #endif
+  write_to_bigendian(outfile, &bom, 3);
 
-  while ((bytes_read = read_to_bigendian(infile, &(buf.upper_bytes), 2)) > 0) {
-    bytes_to_write = 2;
-    reverse_bytes(&(buf.upper_bytes), 2);
-    if(buf.upper_bytes == bom){
+  while((bytes_read = read_to_bigendian(infile, &(utf16_buf.upper_bytes), 2)) > 0) {
+    // bytes_to_write = 2;
+    if(utf16_buf.upper_bytes == curbom){
       continue;
     }
-    if(buf.upper_bytes == 0xa000 || buf.upper_bytes == 0xa00 || buf.upper_bytes == 0xa0 || buf.upper_bytes == 0xa){
+    if(utf16_buf.upper_bytes == 0xa000 || utf16_buf.upper_bytes == 0xa00 || utf16_buf.upper_bytes == 0xa0 || utf16_buf.upper_bytes == 0xa){
       break;
     }
-    if(is_lower_surrogate_pair(buf)) {
-      if((bytes_read = read_to_bigendian(infile, &(buf.lower_bytes), 2)) < 0) {
+    reverse_bytes(&(utf16_buf.upper_bytes),2);
+    if(is_upper_surrogate_pair(utf16_buf)){
+      if((bytes_read = read_to_bigendian(infile, &(utf16_buf.lower_bytes), 2)) < 0) {
         break;
       }
-      reverse_bytes(&(buf.lower_bytes), 2);
-      bytes_to_write += 2;
+      reverse_bytes(&(utf16_buf.lower_bytes),2);
+      code_point = utf16_glyph_to_code_point(&utf16_buf);
     }
-    write_to_bigendian(outfile, &buf, bytes_to_write);
+    code_point = utf16_glyph_to_code_point(&utf16_buf);
+    utf8_buf = code_point_to_utf8_glyph(code_point, &size_of_glyph);
+    write_to_bigendian(outfile, &utf8_buf, size_of_glyph);
   }
   ret = bytes_read;
   return ret;
