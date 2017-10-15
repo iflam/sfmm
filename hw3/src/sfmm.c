@@ -253,7 +253,7 @@ int errorTesting(sf_header *ptrH, sf_footer *ptrF){
 void *sf_realloc(void *ptr, size_t size) {
     sf_header *ptrH = (sf_header*)ptr;
     sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
-    sf_header *returnPtr;
+    sf_header *returnPtr = ptrH;
     size_t hfSize = size+16;
     size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
     errorTesting(ptrH,ptrF);
@@ -270,7 +270,7 @@ void *sf_realloc(void *ptr, size_t size) {
 
     }
     else{
-        return ptr;
+        return returnPtr;
     }
 
 
