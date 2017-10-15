@@ -52,8 +52,11 @@ sf_free_header* initPage(){
         sbrkRetVal->allocated = 0;
         sbrkRetVal->block_size = PAGE_SZ>>4;
         sf_free_header *baseH = (sf_free_header*)sbrkRetVal;
-        baseH->next = NULL;
-        baseH->prev = NULL;
+        sf_free_header *nextF;
+        nextF = seg_free_list[i].head;
+        //sets the links
+        if(nextF != NULL)
+            baseH->next = nextF;
         seg_free_list[i].head = baseH;
         sf_footer *baseF = (sf_footer*)((((char*)get_heap_start())+(sbrkRetVal->block_size<<4))-8);
         baseF->allocated = 0;
@@ -153,14 +156,89 @@ void *sf_malloc(size_t size) {
 	return newH;
 }
 
+int errorTesting(sf_header *ptrH, sf_footer *ptrF){
+    if(ptrH == NULL){
+        abort();
+    }
+    if(ptrH < (sf_header*)get_heap_start() || ptrF+8 > (sf_footer*)get_heap_end()){
+        abort();
+    }
+    if(ptrH->allocated == 0 || ptrF->allocated == 0){
+        abort();
+    }
+    size_t hfSize = ptrF->requested_size+16;
+    size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
+    if(ptrF->padded == 1){
+        if(ptrF->requested_size+16 == ptrF->block_size<<4){
+            abort();
+        }
+        if(allocSize != ptrF->block_size<<4){
+            abort();
+        }
+    }
+    if(ptrF->padded == 0){
+        if(ptrF->requested_size+16 != ptrF->block_size<<4){
+            abort();
+        }
+    }
+    if(ptrH->allocated != ptrF->allocated){
+        abort();
+    }
+    if(ptrH->padded != ptrF->padded){
+        abort();
+    }
+    return 0;
+}
+
 void *sf_realloc(void *ptr, size_t size) {
 	return NULL;
 }
 
 void sf_free(void *ptr) {
+    sf_header *ptrH = (sf_header*)ptr;
+    sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
+    sf_header *nextVal =(sf_header*)(((char*)ptrF)+8);
+    sf_free_header *nextFree = NULL;
+    errorTesting(ptrH,ptrF); //check for invalid pointer
+    //is valid pointer
+    if(nextVal < (sf_header*)get_heap_end()){
+        if(nextVal->allocated == 0){
+            nextFree = (sf_free_header*)nextVal; //make nextFree the next block in memory so we can coallesce
+        }
+    }
+    if(nextFree != NULL){
+        //it is free
+
+        sf_free_header *prevF = nextFree->prev;
+        sf_free_header *nextF = nextFree->next;
+
+        //SET THE LINKS
+        if(prevF != NULL)
+            prevF->next = nextF;
+        if(nextF != NULL)
+            nextF->prev = prevF;
+        if(seg_free_list[findProperList(nextFree->header.block_size<<4)].head == nextFree){
+            seg_free_list[findProperList(nextFree->header.block_size<<4)].head = NULL;
+        }
+
+        ptrH->block_size = ((ptrH->block_size<<4)+(nextFree->header.block_size<<4))>>4;
+        ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
+
+        ptrH->allocated = 0;
+        ptrH->padded = 0;
+        ptrF->block_size = ptrH->block_size;
+
+        //PUT INTO REQUIRED LIST
+        sf_free_header *currH = seg_free_list[findProperList(ptrH->block_size<<4)].head;
+        sf_free_header *insH = (sf_free_header*)ptrH;
+        seg_free_list[findProperList(ptrH->block_size<<4)].head = (sf_free_header*)ptrH;
+        insH->next = currH;
+        insH->prev = NULL;
+        if(currH != NULL){
+            currH->prev = insH;
+        }
+        sf_snapshot();
+    }
 	return;
 }
 
-int errorTesting(){
-    return 0;
-}
