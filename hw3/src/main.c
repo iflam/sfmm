@@ -5,9 +5,7 @@ int main(int argc, char const *argv[]) {
 
     sf_mem_init();
 
-    double *ptr = sf_malloc(sizeof(double));
-    sf_free(ptr);
-
+    double *ptr = sf_malloc(50);
     *ptr = 320320320e-320;
 
     printf("%f\n", *ptr);

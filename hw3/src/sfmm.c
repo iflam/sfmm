@@ -21,12 +21,18 @@ free_list seg_free_list[4] = {
 
 int sf_errno = 0;
 
+int findProperList(size_t sz){
+    if (sz >= LIST_1_MIN && sz <= LIST_1_MAX) return 0;
+    else if (sz >= LIST_2_MIN && sz <= LIST_2_MAX) return 1;
+    else if (sz >= LIST_3_MIN && sz <= LIST_3_MAX) return 2;
+    else return 3;
+}
 
 sf_free_header* findFirstFit(size_t size){
     for(int listNum = 0; listNum < 4; listNum++){ //cycle through the lists from the lowest possible list size
         sf_free_header *checkH = seg_free_list[listNum].head;
         while(checkH != NULL){
-            if(checkH->header.block_size >= size){ //if the size block is the first one we find bigger than the requested size...
+            if(checkH->header.block_size<<4 >= size){ //if the size block is the first one we find bigger than the requested size...
                 return checkH; //return this block
             }
             checkH = checkH->next;
@@ -36,42 +42,89 @@ sf_free_header* findFirstFit(size_t size){
     return (void*)-1; //return -1, we did not find any block!
 }
 
+sf_free_header* coallesce(sf_header* leftPtr, sf_header* rightPtr, int blockIsFree){
+    sf_free_header *nextFree = NULL;
+    sf_header *leftH;
+    sf_footer *rightF;
+
+    leftH = leftPtr;
+    //To coallesce, we will take leftPtr's head and put into it the block_size of leftPtr and rightPtr.
+    //We will then change the corresponding header/footer values as required, and remove the proper free one from its list.
+    if(blockIsFree == 0){
+        //coallescing down (AKA malloc's sbrk)
+        nextFree = (sf_free_header*)leftPtr;
+    }
+    else{
+        //coallescing up (AKA free)
+        nextFree = (sf_free_header*)rightPtr;
+    }
+    sf_free_header *prevF = nextFree->prev;
+    sf_free_header *nextF = nextFree->next;
+
+    //SET THE LINKS
+    if(prevF != NULL)
+        prevF->next = nextF;
+    if(nextF != NULL)
+        nextF->prev = prevF;
+    if(seg_free_list[findProperList(nextFree->header.block_size<<4)].head == nextFree){
+        seg_free_list[findProperList(nextFree->header.block_size<<4)].head = NULL;
+    }
+
+    leftH->block_size = ((leftH->block_size<<4)+(rightPtr->block_size<<4))>>4;
+    rightF = (sf_footer*)(((char*)leftH)+(leftH->block_size<<4)-8);
+    rightF->allocated = 0;
+    rightF->padded = 0;
+    rightF->block_size = leftH->block_size;
+    leftH->allocated = 0;
+    leftH->padded = 0;
+
+    //PUT INTO PROPER LIST
+    sf_free_header *currH = seg_free_list[findProperList(leftH->block_size<<4)].head;
+    sf_free_header *insH = (sf_free_header*)leftH;
+    seg_free_list[findProperList(leftH->block_size<<4)].head = (sf_free_header*)leftH;
+    insH->next = currH;
+    insH->prev = NULL;
+    if(currH != NULL){
+        currH->prev = insH;
+    }
+    return nextFree;
+}
+
 sf_free_header* initPage(){
     sf_header *sbrkRetVal;
+    sf_header *freePutVal;
     if((sbrkRetVal = sf_sbrk()) == (void*)-1){
         return (void*)-1;
     } //set the return value for the heap as a header
-    printf("Heap start: %p, Heap end: %p, return val: %p\n",(int*)get_heap_start(),(int*)get_heap_end(),sbrkRetVal);
-    for(int i = 0; i < FREE_LIST_COUNT; i++){
-        if(seg_free_list[i].max < PAGE_SZ){
-            continue;
+    //attempt a coallesce on sbrkRetVal:
+    freePutVal = sbrkRetVal;
+    sf_footer *prevF= (sf_footer*)(((char*)sbrkRetVal)-8);
+    freePutVal->block_size = PAGE_SZ>>4;
+    if(prevF > (sf_footer*)get_heap_start()){
+        //block does exist
+        if(prevF->allocated == 0){
+            //not allocated...
+            sf_header *temp = (sf_header*)(((char*)prevF)-(prevF->block_size<<4)+8);
+            freePutVal = (sf_header*)coallesce(temp,freePutVal,0);
         }
-        // sbrkRetVal = header for free header
-        //baseH = free header
-        //baseF = footer
-        sbrkRetVal->allocated = 0;
-        sbrkRetVal->block_size = PAGE_SZ>>4;
-        sf_free_header *baseH = (sf_free_header*)sbrkRetVal;
-        sf_free_header *nextF;
-        nextF = seg_free_list[i].head;
-        //sets the links
-        if(nextF != NULL)
-            baseH->next = nextF;
-        seg_free_list[i].head = baseH;
-        sf_footer *baseF = (sf_footer*)((((char*)get_heap_start())+(sbrkRetVal->block_size<<4))-8);
-        baseF->allocated = 0;
-        baseF->block_size = PAGE_SZ>>4;
-        printf("Header address: %p, Footer address: %p\n",sbrkRetVal,baseF);
-        return baseH;
     }
-    return (void*)-1;
-}
-
-int findProperList(size_t sz){
-    if (sz >= LIST_1_MIN && sz <= LIST_1_MAX) return 0;
-    else if (sz >= LIST_2_MIN && sz <= LIST_2_MAX) return 1;
-    else if (sz >= LIST_3_MIN && sz <= LIST_3_MAX) return 2;
-    else return 3;
+    freePutVal->allocated = 0;
+    printf("Heap start: %p, Heap end: %p, return val: %p\n",(int*)get_heap_start(),(int*)get_heap_end(),sbrkRetVal);
+    // sbrkRetVal = header for free header
+    //baseH = free header
+    //baseF = footer
+    sf_free_header *baseH = (sf_free_header*)freePutVal;
+    sf_free_header *nextF;
+    nextF = seg_free_list[findProperList(freePutVal->block_size<<4)].head;
+    //sets the links
+    if(nextF != NULL)
+        baseH->next = nextF;
+    seg_free_list[findProperList(freePutVal->block_size<<4)].head = baseH;
+    sf_footer *baseF = (sf_footer*)((((char*)get_heap_start())+(freePutVal->block_size<<4))-8);
+    baseF->allocated = 0;
+    baseF->block_size = PAGE_SZ>>4;
+    printf("Header address: %p, Footer address: %p\n",freePutVal,baseF);
+    return baseH;;
 }
 
 sf_header* makeBlock(sf_free_header *freeH, size_t size, size_t allocSize){
@@ -135,7 +188,14 @@ sf_header* makeBlock(sf_free_header *freeH, size_t size, size_t allocSize){
     }
     return newH;
 }
+
 void *sf_malloc(size_t size) {
+    /*FOR TESTING//
+    */           //
+    // initPage();/
+    // initPage();/
+    /*            /
+    //FOR TESTING*/
     sf_header *newH;
     size_t hfSize = size+16;
     size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
@@ -148,9 +208,9 @@ void *sf_malloc(size_t size) {
             //COULD NOT CREATE PAGE
             return NULL;
         }
+    }
     //NEXTFREE
     newH = makeBlock(nextFree, size, allocSize);
-    }
     sf_blockprint(newH);
     sf_snapshot();
 	return newH;
@@ -191,53 +251,65 @@ int errorTesting(sf_header *ptrH, sf_footer *ptrF){
 }
 
 void *sf_realloc(void *ptr, size_t size) {
-	return NULL;
+    sf_header *ptrH = (sf_header*)ptr;
+    sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
+    sf_header *returnPtr;
+    size_t hfSize = size+16;
+    size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
+    errorTesting(ptrH,ptrF);
+    //if size is 0, free it.
+    if(size == 0){
+        sf_free(ptr);
+        return NULL;
+    }
+    //IF LARGER
+    if(allocSize > ptrH->block_size<<4){
+
+    }
+    else if(allocSize < ptrH->block_size<<4){
+
+    }
+    else{
+        return ptr;
+    }
+
+
+
+	return returnPtr;
 }
 
 void sf_free(void *ptr) {
     sf_header *ptrH = (sf_header*)ptr;
     sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
     sf_header *nextVal =(sf_header*)(((char*)ptrF)+8);
-    sf_free_header *nextFree = NULL;
+    //sf_free_header *nextFree = NULL;
+    // sf_free_header *collPtr = NULL;
     errorTesting(ptrH,ptrF); //check for invalid pointer
     //is valid pointer
     if(nextVal < (sf_header*)get_heap_end()){
+        //IT IS INSIDE THE HEAP
         if(nextVal->allocated == 0){
-            nextFree = (sf_free_header*)nextVal; //make nextFree the next block in memory so we can coallesce
+            //IT IS FREE
+            //*******nextFree = (sf_free_header*)nextVal; //make nextFree the next block in memory so we can coallesce
+            //*******collPtr = coallesce(ptrH,nextVal,1);
+            coallesce(ptrH,nextVal,1);
         }
-    }
-    if(nextFree != NULL){
-        //it is free
-
-        sf_free_header *prevF = nextFree->prev;
-        sf_free_header *nextF = nextFree->next;
-
-        //SET THE LINKS
-        if(prevF != NULL)
-            prevF->next = nextF;
-        if(nextF != NULL)
-            nextF->prev = prevF;
-        if(seg_free_list[findProperList(nextFree->header.block_size<<4)].head == nextFree){
-            seg_free_list[findProperList(nextFree->header.block_size<<4)].head = NULL;
+        else{
+            //IT IS NOT FREE, JUST SET PTR VALUES AND ADD PTR TO A LIST
+            ptrH->allocated = 0;
+            ptrH->padded = 0;
+            ptrF->allocated = 0;
+            ptrF->padded = 0;
+            ptrF->requested_size = 0;
+            sf_free_header *currH = seg_free_list[findProperList(ptrH->block_size<<4)].head;
+            sf_free_header *insH = (sf_free_header*)ptrH;
+            seg_free_list[findProperList(ptrH->block_size<<4)].head = (sf_free_header*)ptrH;
+            insH->next = currH;
+            insH->prev = NULL;
+            if(currH != NULL){
+                currH->prev = insH;
+            }
         }
-
-        ptrH->block_size = ((ptrH->block_size<<4)+(nextFree->header.block_size<<4))>>4;
-        ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
-
-        ptrH->allocated = 0;
-        ptrH->padded = 0;
-        ptrF->block_size = ptrH->block_size;
-
-        //PUT INTO REQUIRED LIST
-        sf_free_header *currH = seg_free_list[findProperList(ptrH->block_size<<4)].head;
-        sf_free_header *insH = (sf_free_header*)ptrH;
-        seg_free_list[findProperList(ptrH->block_size<<4)].head = (sf_free_header*)ptrH;
-        insH->next = currH;
-        insH->prev = NULL;
-        if(currH != NULL){
-            currH->prev = insH;
-        }
-        sf_snapshot();
     }
 	return;
 }
