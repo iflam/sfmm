@@ -89,7 +89,7 @@ Test(sf_memsuite_student, free_coalesce, .init = sf_mem_init, .fini = sf_mem_fin
 	cr_assert(sf_errno == 0, "sf_errno is not zero!");
 }
 
-Test(sf_memsuite_student, freelist, .init = sf_mem_init, .fini = sf_mem_fini) {
+Test(sf_memsuite_student, freelists, .init = sf_mem_init, .fini = sf_mem_fini) {
 	/* void *u = */ sf_malloc(1);          //32
 	void *v = sf_malloc(LIST_1_MIN); //48
 	void *w = sf_malloc(LIST_2_MIN); //160
@@ -185,3 +185,169 @@ Test(sf_memsuite_student, realloc_smaller_block_free_block, .init = sf_mem_init,
 //DO NOT DELETE THESE COMMENTS
 //############################################
 
+Test(sf_memsuite_student, Coallesce_twice, .init = sf_mem_init, .fini = sf_mem_fini) {
+
+	// This test makes sure that if you malloc then free then malloc then free, it will stay freed properly.
+    sf_errno = 0;
+    void *x = sf_malloc(sizeof(double));
+    void *z = sf_malloc(sizeof(double)*5);
+
+    sf_free(z);
+    sf_header *header = (sf_header*)((char*)z -8);
+    cr_assert(header->allocated == 0, "z was not freed");
+    cr_assert(header->block_size<<4 == PAGE_SZ - 32, "z did not coallesce with the big group");
+
+    sf_free(x);
+    sf_header *header2 = (sf_header*)((char*)x -8);
+
+    cr_assert(header2->allocated == 0, "x was not freed");
+    cr_assert(header2->block_size<<4 == PAGE_SZ, "x did not coallesce with the big group");
+
+    //Try a second coallescion
+    x = sf_malloc(sizeof(double));
+    sf_free(x);
+    cr_assert(header2->allocated == 0, "x was not freed 2");
+    cr_assert(header2->block_size<<4 == PAGE_SZ, "x did not coallesce with the big group 2");
+}
+
+Test(sf_memsuite_student, Padding_Change_Realloc, .init = sf_mem_init, .fini = sf_mem_fini){
+
+	// This test checks to make sure that the padding values get changed if they need to be during a realloc
+	sf_errno = 0;
+	void *x = sf_malloc(sizeof(double));
+	x = sf_realloc(x,16);
+
+	sf_header *header = (sf_header*)((char*)x -8);
+	cr_assert(header->padded == 0, "padding was not change, there is no padding. (16)");
+
+	x = sf_realloc(x,14);
+	cr_assert(header->padded == 1, "padding was not changed, there should be padding. (14)");
+
+	x = sf_realloc(x,12);
+	cr_assert(header->padded == 1, "padding changed to 0, there should be padding. (12)");
+}
+
+
+Test(sf_memsuite_student, Free_reallocated_malloc, .init = sf_mem_init, .fini = sf_mem_fini, .signal = SIGABRT){
+
+	// This test makes sure that realloc frees the allocated "x"
+
+	sf_errno = 0;
+	void *x = sf_malloc(87);
+	void *y = sf_realloc(x,140);
+
+	sf_header *header = (sf_header*)((char*)x-8);
+	sf_header *header2 = (sf_header*)((char*)y-8);
+	cr_assert(header->allocated == 0, "x was not freed!!!!");
+	cr_assert(header2 != header, "y should be at different address");
+	sf_free(x);
+}
+
+Test(sf_memsuite_student, coallesce_two_blocks, .init = sf_mem_init, .fini = sf_mem_fini){
+
+	// This test makes sure that when you free two separate blocks of the same size, they both get put into the
+	// correct list and don't coallesce with or affect each other.
+	sf_errno = 0;
+	void *x = sf_malloc(16);
+	void *y = sf_malloc(16);
+	/*void *z = */sf_malloc(16);
+	void *a = sf_malloc(16);
+	void *b = sf_malloc(16);
+	/*void *c = */sf_malloc(16);
+
+	sf_free(b);
+	sf_free(a);
+	sf_free(y);
+	sf_free(x);
+
+	//should have three free blocks in lists. two in list 1, one in last list.
+	for (int i = 0; i < FREE_LIST_COUNT; i++) {
+		sf_free_header *fh = (sf_free_header *)(seg_free_list[i].head);
+		if(i == 0){
+			cr_assert(fh->header.block_size << 4 == 64, "Unexpected free block size! (List 0, block 1)");
+			cr_assert(fh->next->header.block_size<<4 == 64, "Unexpected free block size! (List 0, block 2)");
+		}
+		if(i == 3){
+			//3904 is for -32 -32 -32 -32 -32 -32
+			cr_assert(fh->header.block_size <<4 == 3904, "Unexpected free block size! (List 3, block 1)");
+		}
+	}
+}
+
+Test(sf_memsuite_student, malloc_middle_block, .init = sf_mem_init, .fini = sf_mem_fini){
+
+	// This test ensures that when mallocing a middle block from a group of free blocks, they get linked appropriately.
+	sf_errno = 0;
+	void *x = sf_malloc(16);
+	/*void *g = */sf_malloc(16);
+	void *y = sf_malloc(32);
+	/*void *z = */sf_malloc(16);
+	void *a = sf_malloc(32);
+	void *b = sf_malloc(32);
+	/*void *c = */sf_malloc(16);
+
+	sf_free(b);
+	sf_free(a);
+	sf_free(y);
+	sf_free(x);
+
+	//Now we should have free list 0 contains 3 blocks. We want to allocate the block at address of y and see
+	//if it joins x and a in link and removes y as malloc'd location.
+
+	void *test = sf_malloc(32);
+	sf_header *header = (sf_header*)((char*)test-8);
+	cr_assert(header->allocated == 1, "block size not allocated");
+	cr_assert(header->block_size<<4 == 48, "block size not correct!");
+
+	//free list 0 should contain 2 blocks: one size 32, one size 96. free list 3 should contain 1 block size ef/3824
+	for (int i = 0; i < FREE_LIST_COUNT; i++) {
+		sf_free_header *fh = (sf_free_header *)(seg_free_list[i].head);
+		if(i == 0){
+			cr_assert(fh->header.block_size << 4 == 32, "Unexpected free block size! (List 0, block 1)");
+			cr_assert(fh->next->header.block_size<<4 == 96, "Unexpected free block size! (List 0, block 2)");
+		}
+		if(i == 3){
+			//3904 is for -32 -32 -32 -32 -32 -32
+			cr_assert(fh->header.block_size <<4 == 3824, "Unexpected free block size! (List 3, block 1)");
+		}
+	}
+}
+
+Test(sf_memsuite_student, malloc_end_block, .init = sf_mem_init, .fini = sf_mem_fini){
+
+	// This test ensures that when mallocing the end block from a group of free blocks, they get linked appropriately.
+	sf_errno = 0;
+	void *x = sf_malloc(16);
+	/*void *g = */sf_malloc(16);
+	void *y = sf_malloc(32);
+	/*void *z = */sf_malloc(16);
+	void *a = sf_malloc(32);
+	void *b = sf_malloc(32);
+	/*void *c = */sf_malloc(16);
+
+	sf_free(b);
+	sf_free(a);
+	sf_free(y);
+	sf_free(x);
+
+	//Now we should have free list 0 contains 3 blocks. We want to allocate the block at address of a and see
+	//if it joins x and y in link and removes a as malloc'd location.
+
+	void *test = sf_malloc(64);
+	sf_header *header = (sf_header*)((char*)test-8);
+	cr_assert(header->allocated == 1, "block size not allocated");
+	cr_assert(header->block_size<<4 == 96, "block size not correct!");
+
+	//free list 0 should contain 2 blocks: one size 32, one size 48. free list 3 should contain 1 block size ef/3824
+	for (int i = 0; i < FREE_LIST_COUNT; i++) {
+		sf_free_header *fh = (sf_free_header *)(seg_free_list[i].head);
+		if(i == 0){
+			cr_assert(fh->header.block_size << 4 == 32, "Unexpected free block size! (List 0, block 1)");
+			cr_assert(fh->next->header.block_size<<4 == 48, "Unexpected free block size! (List 0, block 2)");
+		}
+		if(i == 3){
+			//3904 is for -32 -32 -32 -32 -32 -32
+			cr_assert(fh->header.block_size <<4 == 3824, "Unexpected free block size! (List 3, block 1)");
+		}
+	}
+}
