@@ -41,7 +41,7 @@ sf_free_header* findFirstFit(size_t size){
         }
         //This means there was no room in this listNum, so we go to the next list...
     }
-    return (void*)-1; //return -1, we did not find any block!
+    return (NULL); //return -1, we did not find any block!
 }
 
 sf_free_header* coallesce(sf_header* leftPtr, sf_header* rightPtr, int blockIsFree){
@@ -69,7 +69,10 @@ sf_free_header* coallesce(sf_header* leftPtr, sf_header* rightPtr, int blockIsFr
     if(nextF != NULL)
         nextF->prev = prevF;
     if(seg_free_list[findProperList(nextFree->header.block_size<<4)].head == nextFree){
-        seg_free_list[findProperList(nextFree->header.block_size<<4)].head = NULL;
+        if(nextF != NULL)
+            seg_free_list[findProperList(nextFree->header.block_size<<4)].head = nextF;
+        else
+            seg_free_list[findProperList(nextFree->header.block_size<<4)].head = NULL;
     }
 
     leftH->block_size = ((leftH->block_size<<4)+(rightPtr->block_size<<4))>>4;
@@ -95,8 +98,8 @@ sf_free_header* coallesce(sf_header* leftPtr, sf_header* rightPtr, int blockIsFr
 sf_free_header* initPage(){
     sf_header *sbrkRetVal;
     sf_header *freePutVal;
-    if((sbrkRetVal = sf_sbrk()) == (void*)0x0){
-        return (void*)-1;
+    if((sbrkRetVal = sf_sbrk()) == (void*)-1){
+        return NULL;
     } //set the return value for the heap as a header
     //attempt a coallesce on sbrkRetVal:
     freePutVal = sbrkRetVal;
@@ -174,13 +177,20 @@ sf_header* makeBlock(sf_free_header *freeH, size_t size, size_t allocSize){
             //We're at the head of the list.
             seg_free_list[findProperList((freeH->header.block_size)<<4)].head = NULL;
         }
+        nextF = freeH->next;
+        prevF = freeH->prev;
+        //sets the links
+        if(prevF != NULL)
+            prevF->next = nextF;
+        if(nextF != NULL)
+            nextF->prev = prevF;
         allocSize += ((freeH->header.block_size<<4) - allocSize); //this puts the remaining size into the size.
         newH = (sf_header*)freeH;
         newH->allocated = 1;
-        newH->block_size =allocSize;
-        newF = (sf_footer*)(((char*)newH+(allocSize<<4))-8);
+        newH->block_size =allocSize>>4;
+        newF = (sf_footer*)(((char*)newH+(allocSize))-8);
         newF->allocated = 1;
-        newF->block_size = allocSize;
+        newF->block_size = allocSize>>4;
         newF->requested_size = size;
     }
     if(size+16 != allocSize){
@@ -215,22 +225,14 @@ void *sf_malloc(size_t size) {
     size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
     //check for if there is room in free lists
     sf_free_header *nextFree;
-    while((nextFree = findFirstFit(allocSize)) == (void*)-1){
+    while((nextFree = findFirstFit(allocSize)) == NULL){
         //NO FIRST FIT
-        if((nextFree = initPage()) == (void*)-1){
+        if((nextFree = initPage()) == NULL){
             //COULD NOT CREATE PAGE
             sf_errno = ENOMEM;
             return NULL;
         }
     }
-    // if((nextFree = findFirstFit(allocSize))==(void*)-1){
-    //     //NO FIRST FIT
-    //     if((nextFree = initPage()) == (void*)-1){
-    //         //COULD NOT CREATE PAGE
-    //         sf_errno = ENOMEM;
-    //         return NULL;
-    //     }
-    // }
     //NEXTFREE
     newH = makeBlock(nextFree, size, allocSize);
 	return (char*)newH +8;
@@ -240,7 +242,7 @@ int errorTesting(sf_header *ptrH, sf_footer *ptrF){
     if(ptrH == NULL){
         abort();
     }
-    if(ptrH < (sf_header*)get_heap_start() || ptrF+8 > (sf_footer*)get_heap_end()){
+    if(ptrH < (sf_header*)get_heap_start() || (sf_footer*)((char*)ptrF+8) > (sf_footer*)get_heap_end()){
         abort();
     }
     if(ptrH->allocated == 0 || ptrF->allocated == 0){
@@ -273,6 +275,15 @@ void *sf_realloc(void *ptr, size_t size) {
     sf_footer *returnPtr;
     size_t allocSize = (size%16==0?size:size+(16-size%16));
     size_t avSpace = (ptrH->block_size<<4)-16; //the amount of space in the payload + padding
+    sf_free_header *nextFree;
+    while((nextFree = findFirstFit(allocSize)) == NULL){
+        //NO FIRST FIT
+        if((nextFree = initPage()) == NULL){
+            //COULD NOT CREATE PAGE
+            sf_errno = ENOMEM;
+            return NULL;
+        }
+    }
     errorTesting(ptrH,ptrF);
     //if size is 0, free it.
     if(size == 0){
@@ -316,7 +327,7 @@ void *sf_realloc(void *ptr, size_t size) {
         }
         //NOW FREE THE OTHER BLOCK
         sf_free((char*)ptrH+8);
-        return (char*)returnPtr +8;
+        return (char*)moveToLoc+8;
     }
     //IF SMALLER
     else{
@@ -384,9 +395,9 @@ void sf_free(void *ptr) {
     // sf_free_header *collPtr = NULL;
     errorTesting(ptrH,ptrF); //check for invalid pointer
     //is valid pointer
-    if(nextVal < (sf_header*)get_heap_end()){
+    if(nextVal <= (sf_header*)get_heap_end()){
         //IT IS INSIDE THE HEAP
-        if(nextVal->allocated == 0){
+        if(nextVal< (sf_header*)get_heap_end() && nextVal->allocated == 0){
             //IT IS FREE
             //*******nextFree = (sf_free_header*)nextVal; //make nextFree the next block in memory so we can coallesce
             //*******collPtr = coallesce(ptrH,nextVal,1);
