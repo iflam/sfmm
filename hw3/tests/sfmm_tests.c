@@ -89,7 +89,7 @@ Test(sf_memsuite_student, free_coalesce, .init = sf_mem_init, .fini = sf_mem_fin
 	cr_assert(sf_errno == 0, "sf_errno is not zero!");
 }
 
-Test(sf_memsuite_student, freelist, .init = sf_mem_init, .fini = sf_mem_fini) {
+Test(sf_memsuite_student, freelists, .init = sf_mem_init, .fini = sf_mem_fini) {
 	/* void *u = */ sf_malloc(1);          //32
 	void *v = sf_malloc(LIST_1_MIN); //48
 	void *w = sf_malloc(LIST_2_MIN); //160

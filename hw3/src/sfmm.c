@@ -6,6 +6,8 @@
 #include "sfmm.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 /**
  * You should store the heads of your free lists in these variables.
@@ -93,23 +95,24 @@ sf_free_header* coallesce(sf_header* leftPtr, sf_header* rightPtr, int blockIsFr
 sf_free_header* initPage(){
     sf_header *sbrkRetVal;
     sf_header *freePutVal;
-    if((sbrkRetVal = sf_sbrk()) == (void*)-1){
+    if((sbrkRetVal = sf_sbrk()) == (void*)0x0){
         return (void*)-1;
     } //set the return value for the heap as a header
     //attempt a coallesce on sbrkRetVal:
     freePutVal = sbrkRetVal;
     sf_footer *prevF= (sf_footer*)(((char*)sbrkRetVal)-8);
     freePutVal->block_size = PAGE_SZ>>4;
+    int coll = 0;
     if(prevF > (sf_footer*)get_heap_start()){
         //block does exist
         if(prevF->allocated == 0){
             //not allocated...
             sf_header *temp = (sf_header*)(((char*)prevF)-(prevF->block_size<<4)+8);
             freePutVal = (sf_header*)coallesce(temp,freePutVal,0);
+            coll = 1;
         }
     }
     freePutVal->allocated = 0;
-    printf("Heap start: %p, Heap end: %p, return val: %p\n",(int*)get_heap_start(),(int*)get_heap_end(),sbrkRetVal);
     // sbrkRetVal = header for free header
     //baseH = free header
     //baseF = footer
@@ -117,13 +120,14 @@ sf_free_header* initPage(){
     sf_free_header *nextF;
     nextF = seg_free_list[findProperList(freePutVal->block_size<<4)].head;
     //sets the links
-    if(nextF != NULL)
-        baseH->next = nextF;
-    seg_free_list[findProperList(freePutVal->block_size<<4)].head = baseH;
-    sf_footer *baseF = (sf_footer*)((((char*)get_heap_start())+(freePutVal->block_size<<4))-8);
-    baseF->allocated = 0;
-    baseF->block_size = PAGE_SZ>>4;
-    printf("Header address: %p, Footer address: %p\n",freePutVal,baseF);
+    if(coll != 1){
+        if(nextF != NULL)
+            baseH->next = nextF;
+        seg_free_list[findProperList(freePutVal->block_size<<4)].head = baseH;
+        sf_footer *baseF = (sf_footer*)((((char*)get_heap_start())+(freePutVal->block_size<<4))-8);
+        baseF->allocated = 0;
+        baseF->block_size = PAGE_SZ>>4;
+    }
     return baseH;;
 }
 
@@ -136,6 +140,7 @@ sf_header* makeBlock(sf_free_header *freeH, size_t size, size_t allocSize){
     //freeH must be split
     if((freeH->header.block_size<<4) - allocSize > 32){
         size_t newFreeSize = (freeH->header.block_size<<4) - allocSize;
+        seg_free_list[findProperList(freeH->header.block_size<<4)].head = NULL;
         sf_footer *newFreeF;
         newH = (sf_header*)freeH;
         newH->allocated = 1;
@@ -178,7 +183,7 @@ sf_header* makeBlock(sf_free_header *freeH, size_t size, size_t allocSize){
         newF->block_size = allocSize;
         newF->requested_size = size;
     }
-    if(size != allocSize){
+    if(size+16 != allocSize){
         newH->padded = 1;
         newF->padded = 1;
     }
@@ -196,24 +201,39 @@ void *sf_malloc(size_t size) {
     // initPage();/
     /*            /
     //FOR TESTING*/
+    if(size > PAGE_SZ*4){
+        sf_errno = EINVAL;
+        return NULL;
+    }
+    if(size == 0 || size == PAGE_SZ*4){
+        sf_errno = ENOMEM;
+        return NULL;
+
+    }
     sf_header *newH;
     size_t hfSize = size+16;
     size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
-    printf("Heap start: %p, Heap end: %p\n",get_heap_start(),get_heap_end());
     //check for if there is room in free lists
     sf_free_header *nextFree;
-    if((nextFree = findFirstFit(allocSize))==(void*)-1){
+    while((nextFree = findFirstFit(allocSize)) == (void*)-1){
         //NO FIRST FIT
         if((nextFree = initPage()) == (void*)-1){
             //COULD NOT CREATE PAGE
+            sf_errno = ENOMEM;
             return NULL;
         }
     }
+    // if((nextFree = findFirstFit(allocSize))==(void*)-1){
+    //     //NO FIRST FIT
+    //     if((nextFree = initPage()) == (void*)-1){
+    //         //COULD NOT CREATE PAGE
+    //         sf_errno = ENOMEM;
+    //         return NULL;
+    //     }
+    // }
     //NEXTFREE
     newH = makeBlock(nextFree, size, allocSize);
-    sf_blockprint(newH);
-    sf_snapshot();
-	return newH;
+	return (char*)newH +8;
 }
 
 int errorTesting(sf_header *ptrH, sf_footer *ptrF){
@@ -226,13 +246,10 @@ int errorTesting(sf_header *ptrH, sf_footer *ptrF){
     if(ptrH->allocated == 0 || ptrF->allocated == 0){
         abort();
     }
-    size_t hfSize = ptrF->requested_size+16;
-    size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
+    // size_t hfSize = ptrF->requested_size+16;
+    // size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
     if(ptrF->padded == 1){
         if(ptrF->requested_size+16 == ptrF->block_size<<4){
-            abort();
-        }
-        if(allocSize != ptrF->block_size<<4){
             abort();
         }
     }
@@ -251,11 +268,11 @@ int errorTesting(sf_header *ptrH, sf_footer *ptrF){
 }
 
 void *sf_realloc(void *ptr, size_t size) {
-    sf_header *ptrH = (sf_header*)ptr;
+    sf_header *ptrH = (sf_header*)((char*)ptr-8);
     sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
-    sf_header *returnPtr = ptrH;
-    size_t hfSize = size+16;
-    size_t allocSize = (hfSize%16==0?hfSize:hfSize+(16-hfSize%16));
+    sf_footer *returnPtr;
+    size_t allocSize = (size%16==0?size:size+(16-size%16));
+    size_t avSpace = (ptrH->block_size<<4)-16; //the amount of space in the payload + padding
     errorTesting(ptrH,ptrF);
     //if size is 0, free it.
     if(size == 0){
@@ -263,23 +280,104 @@ void *sf_realloc(void *ptr, size_t size) {
         return NULL;
     }
     //IF LARGER
-    if(allocSize > ptrH->block_size<<4){
+    if(allocSize >= ptrF->requested_size){
 
-    }
-    else if(allocSize < ptrH->block_size<<4){
+            if(allocSize <= avSpace){
+                //WE CAN FIT ALLOC SIZE INTO REQUESTED SIZE!!!
+                ptrF->requested_size = size;
+                if((ptrF->requested_size)+ 16 != ptrF->block_size<<4){
+                    ptrH->padded = 1;
+                    ptrF->padded = 1;
+                }
+                else{
+                    ptrF->padded = 0;
+                    ptrH->padded = 0;
+                }
+                return (char*)ptrH +8;
+            }
 
+        //MUST CREATE A NEW BLOCK
+        sf_header *moveToLoc;
+        if((moveToLoc = sf_malloc(size)) == NULL){ //malloc block of size requested
+            return NULL;
+        }
+        moveToLoc = memcpy(((char*)moveToLoc),((char*)ptrH)+8,ptrF->requested_size); //copy memory from payload to payload
+        moveToLoc = (sf_header*)(((char*)moveToLoc)-8); //moveToLoc is header
+        //change necessary bits
+        returnPtr = (sf_footer*)(((char*)moveToLoc)+(moveToLoc->block_size<<4)-8); //returnPtr is footer
+        returnPtr->requested_size = size;
+        if((returnPtr->requested_size)+16 != returnPtr->block_size<<4){
+            moveToLoc->padded = 1;
+            returnPtr->padded = 1;
+        }
+        else{
+            moveToLoc->padded = 0;
+            returnPtr->padded = 0;
+        }
+        //NOW FREE THE OTHER BLOCK
+        sf_free((char*)ptrH+8);
+        return (char*)returnPtr +8;
     }
+    //IF SMALLER
     else{
-        return returnPtr;
+        //allocSize < ptrF->requested_size
+        if(avSpace - allocSize < 32){
+            //SPLINTERRRRRRR
+            ptrF->requested_size = size;
+            if((ptrF->requested_size)+ 16 != ptrF->block_size<<4){
+                ptrH->padded = 1;
+                ptrF->padded = 1;
+            }
+            else{
+                ptrF->padded = 0;
+                ptrH->padded = 0;
+            }
+            return (char*)ptrH +8;
+        }
+
+        else{
+            //NOT SPLINTER//
+            allocSize += 16;
+            sf_footer *allocF = (sf_footer*)(((char*)ptrH)+allocSize-8); //footer of block 1
+            //DO ALLOC BLOCK STUFF FIRST
+            //HEADER: ptrH
+            //FOOTER: allocF
+            ptrH->block_size = allocSize>>4;
+            allocF->block_size = allocSize>>4;
+            allocF->requested_size = size;
+            if((allocF->requested_size)+ 16 != allocF->block_size<<4){
+                ptrH->padded = 1;
+                allocF->padded = 1;
+            }
+            else{
+                allocF->padded = 0;
+                ptrH->padded = 0;
+            }
+            allocF->allocated = 1;
+
+            //DO FREE BLOCK STUFF NOW
+            //HEADER: freeH
+            //FOOTER: ptrF
+            size_t allocSize2 = ((ptrF->block_size<<4)-(ptrH->block_size<<4));
+            sf_header *freeH = (sf_header*)(((char*)allocF)+8); //header of block 2
+            freeH->allocated = 1;
+            freeH->block_size = allocSize2>>4;
+            freeH->padded = 1;
+            ptrF->block_size = allocSize2>>4;
+            ptrF->padded = 1;
+            ptrF->requested_size = 0;
+            sf_free((char*)freeH+8);
+            return (char*)ptrH + 8;
+        }
+
+
     }
 
-
-
-	return returnPtr;
+	return NULL;
 }
 
 void sf_free(void *ptr) {
-    sf_header *ptrH = (sf_header*)ptr;
+    sf_header *ptrH = (sf_header*)((char*)ptr-8);
     sf_footer *ptrF = (sf_footer*)(((char*)ptrH)+(ptrH->block_size<<4)-8);
     sf_header *nextVal =(sf_header*)(((char*)ptrF)+8);
     //sf_free_header *nextFree = NULL;
