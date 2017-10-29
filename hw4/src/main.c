@@ -5,13 +5,18 @@
 #include <stdbool.h>
 #include <readline/readline.h>
 
-#include "sfish.h"
 #include "debug.h"
+#include "sfish.h"
 
 int main(int argc, char *argv[], char* envp[]) {
     char* input;
     bool exited = false;
-
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+       fprintf(stdout, "Current working dir: %s\n Home dir: %s\n ", cwd, getenv("HOME"));
+    else
+       perror("getcwd() error");
+    char* prompt = makePrompt(cwd, getenv("HOME"));
     if(!isatty(STDIN_FILENO)) {
         // If your shell is reading from a piped file
         // Don't have readline write anything to that file.
@@ -24,7 +29,7 @@ int main(int argc, char *argv[], char* envp[]) {
 
     do {
 
-        input = readline("> ");
+        input = readline(prompt);
 
         write(1, "\e[s", strlen("\e[s"));
         write(1, "\e[20;10H", strlen("\e[20;10H"));
@@ -32,10 +37,14 @@ int main(int argc, char *argv[], char* envp[]) {
         write(1, "\e[u", strlen("\e[u"));
 
         // If EOF is read (aka ^D) readline returns NULL
+        token* currentT = makeTokens(input);
+        for(int i = 0; currentT!= NULL; i++){
+            printf("Token %i is: %s with type: %i\n", i, currentT->contents, currentT->type);
+            currentT = currentT->next;
+        }
         if(input == NULL) {
             continue;
         }
-
 
         // Currently nothing is implemented
         printf(EXEC_NOT_FOUND, input);
