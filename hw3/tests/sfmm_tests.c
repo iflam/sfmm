@@ -350,4 +350,6 @@ Test(sf_memsuite_student, malloc_end_block, .init = sf_mem_init, .fini = sf_mem_
 			cr_assert(fh->header.block_size <<4 == 3824, "Unexpected free block size! (List 3, block 1)");
 		}
 	}
+
+
 }
