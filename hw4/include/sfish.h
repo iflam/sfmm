@@ -37,12 +37,16 @@ struct program {
     char** args;
 };
 
+typedef struct{
+    pid_t pid;
+    struct job* next;
+}job;
+
 char* cwd;
 
 char* makePrompt(char* cwd, char* homedir);
-
-token* makeTokens(char* input);
-
-program* parseTokens(token* firstToken);
+program* programify(char* input);
+program* makePrograms(char* input);
+void sigchild_handler();
 
 #endif

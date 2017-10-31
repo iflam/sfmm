@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include "debug.h"
 #include "sfish.h"
+#include <signal.h>
 
 int main(int argc, char *argv[], char* envp[]) {
     char* input;
@@ -59,13 +60,14 @@ int main(int argc, char *argv[], char* envp[]) {
             }
         }
         char* input2 = strdup(input);
-        token* currentT = makeTokens(input2);
-        token* firstT = currentT;
+        //token* currentT = makeTokens(input2);
+        //token* firstT = currentT;
         pid_t pid;
-        int i = 0;
+        int i  = 0;
         int child_status, ifd = 0, ofd = 1, pfd[2];
         FILE* file;
-        program* currentProgram = parseTokens(firstT);
+        //program* currentProgram = parseTokens(firstT);
+        program* currentProgram = makePrograms(input2);
         switch(currentProgram->programType){
             case BAD:
             if(currentProgram->itype == LRED1)
@@ -234,6 +236,8 @@ int main(int argc, char *argv[], char* envp[]) {
 
                 else{
                  //PARENT
+                    //install signal handler for SIGCHILD
+                    signal(SIGCHLD, &sigchild_handler);
                     wait(&child_status);
                     close(pfd[1]);
                     ifd = pfd[0];
