@@ -124,41 +124,84 @@ program* setEmpty(program* p){
     p->args = NULL;
     p->infile = NULL;
     p->outfile = NULL;
-    p->itype = (IoType)NULL;
-    p->otype = (IoType)NULL;
+    p->itype = NONE;
+    p->otype = NONE;
     p->next = NULL;
     return p;
 }
 
 program* parsify(program* pp, token* ft){
     program* firstProgram = malloc(sizeof(program));
+    setEmpty(firstProgram);
     program *prevProgram = pp;
     token *firstToken = ft;
-    //program* currentProgram = NULL;
-    //program* prevProgram = NULL;
     token* currentToken = firstToken;
     token* firstArg;
     token* currentArg;
     char** args;
+    bool hasRred = false;
+    bool hasLred = false;
     //first program
     while(currentToken != NULL){
         switch(currentToken->type){
             case IN:
-            firstProgram->infile = currentToken->contents;
-            firstProgram->itype = LRED1;
-            break;
+                if(hasLred){
+                    firstProgram->programType = BAD;
+                    firstProgram->itype = LRED1;
+                    return firstProgram;
+                }
+                firstProgram->infile = currentToken->contents;
+                firstProgram->itype = LRED1;
+                hasLred = true;
+                break;
             case OUT:
-            firstProgram->outfile = currentToken->contents;
-            firstProgram->otype = RRED1;
-            break;
+                if(hasRred){
+                    firstProgram->programType = BAD;
+                    firstProgram->itype = RRED1;
+                    return firstProgram;
+                }
+                firstProgram->outfile = currentToken->contents;
+                firstProgram->otype = RRED1;
+                hasRred = true;
+                break;
+            case RRED:
+                if(currentToken->next == NULL){
+                    firstProgram->programType = BAD;
+                    firstProgram->itype = NULLTYPE;
+                    return firstProgram;
+                }
+                break;
+            case LRED:
+                if(currentToken->next == NULL){
+                    firstProgram->programType = BAD;
+                    firstProgram->itype = NULLTYPE;
+                    return firstProgram;
+                }
+                break;
+            case PIPE:
+                if(currentToken->next == NULL){
+                    firstProgram->programType = BAD;
+                    firstProgram->itype = NULLTYPE;
+                    return firstProgram;
+                }
             default:
-            break;
+                break;
         }
         currentToken = currentToken->next;
     }
     currentToken = firstToken;
     if((strcmp(currentToken->contents,"help")) == 0){
         firstProgram->programType = HELP;
+        //Implement redirection later
+        if(currentToken->next != NULL){
+            if(currentToken->next->type == RRED){
+                currentToken = currentToken->next;
+                if(currentToken->next != NULL){
+                    firstProgram->otype = RRED;
+                    firstProgram->outfile =currentToken->next->contents;
+                }
+            }
+        }
         return firstProgram;
     }
     else if((strcmp(currentToken->contents,"cd")) == 0){
@@ -170,6 +213,16 @@ program* parsify(program* pp, token* ft){
     }
     else if((strcmp(currentToken->contents,"pwd")) == 0){
         firstProgram->programType = PWD;
+        //implement redirection later
+        if(currentToken->next != NULL){
+            if(currentToken->next->type == RRED){
+                currentToken = currentToken->next;
+                if(currentToken->next != NULL){
+                    firstProgram->otype = RRED;
+                    firstProgram->outfile =currentToken->next->contents;
+                }
+            }
+        }
         return firstProgram;
     }
     else{
@@ -205,83 +258,31 @@ program* parsify(program* pp, token* ft){
     firstProgram->args = args;
     firstProgram->name = *args;
     if(prevProgram != NULL){
-
+        prevProgram->next = firstProgram;
     }
     return firstProgram;
 }
 
 program* parseTokens(token* firstToken){
     program* firstProgram = malloc(sizeof(program));
+    program* currentProgram;
+    program* prevProgram;
     setEmpty(firstProgram);
-    // //program* currentProgram = NULL;
-    // //program* prevProgram = NULL;
-    // token* currentToken = firstToken;
-    // token* firstArg;
-    // token* currentArg;
-    // char** args;
-    // //first program
-    // while(currentToken != NULL){
-    //     switch(currentToken->type){
-    //         case IN:
-    //         firstProgram->infile = currentToken->contents;
-    //         firstProgram->itype = LRED1;
-    //         break;
-    //         case OUT:
-    //         firstProgram->outfile = currentToken->contents;
-    //         firstProgram->otype = RRED1;
-    //         break;
-    //         default:
-    //         break;
-    //     }
-    //     currentToken = currentToken->next;
-    // }
-    // currentToken = firstToken;
-    // if((strcmp(currentToken->contents,"help")) == 0){
-    //     firstProgram->programType = HELP;
-    //     return firstProgram;
-    // }
-    // else if((strcmp(currentToken->contents,"cd")) == 0){
-    //     firstProgram->programType = CD;
-    // }
-    // else if((strcmp(currentToken->contents,"exit")) == 0){
-    //     firstProgram->programType = EXIT;
-    //     return firstProgram;
-    // }
-    // else if((strcmp(currentToken->contents,"pwd")) == 0){
-    //     firstProgram->programType = PWD;
-    //     return firstProgram;
-    // }
-    // else{
-    //     firstProgram->programType = PROGRAM;
-    // }
-
-    // int numArgs = 0;
-    // firstArg = currentToken;
-    // currentArg = firstArg;
-    // while(currentArg != NULL){
-    //     if(currentArg->type == PIPE){
-    //         break;
-    //     }
-    //     if(currentArg->type == RRED){
-    //         break;
-    //     }
-    //     if(currentArg->type == LRED){
-    //         break;
-    //     }
-    //     numArgs++;
-    //     currentArg = currentArg->next;
-    // }
-    // currentArg = firstArg;
-    // //create a pointer that points to char pointers
-    // args = malloc((numArgs+1)*sizeof(char*)); //the amount of char pointers will be how many arguments, plus one for NULL.
-    // for(int k = 0; k < numArgs; k++){
-    //     *(args+k) = malloc(strlen(currentArg->contents)+1);
-    //     strcpy(*(args+k),currentArg->contents);
-    //     currentArg = currentArg->next;
-    // }
-    // *(args+numArgs) = malloc(sizeof(NULL));
-    // *(args+numArgs) = (char*)NULL;
-    // firstProgram->args = args;
-    // firstProgram->name = *args;
+    firstProgram = parsify(NULL, firstToken);
+    token* currentArg = firstToken;
+    prevProgram = firstProgram;
+    while(currentArg != NULL){
+        if(currentArg->type == PIPE){
+            currentProgram = malloc(sizeof(program));
+            setEmpty(currentProgram);
+            currentProgram = parsify(prevProgram, currentArg->next);
+            prevProgram = currentProgram;
+        }
+        if(currentProgram->programType == BAD){
+            return currentProgram;
+        }
+        currentArg = currentArg->next;
+    }
     return firstProgram;
 }
+
