@@ -11,12 +11,18 @@
 #include "debug.h"
 #include "sfish.h"
 #include <signal.h>
+#include <errno.h>
 
 int main(int argc, char *argv[], char* envp[]) {
     char* input;
     bool exited = false;
     char cwd[1024];
     char prevwd[1024];
+    pid_t pgid;
+    int stdin = 0;
+    int stdout = 1;
+    int stderr = 2;
+    int mypgid = getpgid(getpid());
     unsetenv("OLDPWD");
     if (getcwd(cwd, sizeof(cwd)) == NULL)
        perror("getcwd() error");
@@ -34,7 +40,8 @@ int main(int argc, char *argv[], char* envp[]) {
     }
 
     do {
-
+        signal(SIGINT,SIG_IGN);
+        signal(SIGTSTP,SIG_IGN);
         input = readline(prompt);
 
         write(1, "\e[s", strlen("\e[s"));
@@ -64,7 +71,7 @@ int main(int argc, char *argv[], char* envp[]) {
         //token* firstT = currentT;
         pid_t pid;
         int i  = 0;
-        int child_status, ifd = 0, ofd = 1, pfd[2];
+        int /*child_status, */ ifd = 0, ofd = 1, pfd[2];
         FILE* file;
         //program* currentProgram = parseTokens(firstT);
         program* currentProgram = makePrograms(input2);
@@ -157,16 +164,50 @@ int main(int argc, char *argv[], char* envp[]) {
                 }
                 break;
             break;
+            case JOBS:;
+                job* currJob = getHead();
+                while(currJob){
+                    printf(JOBS_LIST_ITEM,currJob->jobNum,currJob->name);
+                    currJob = currJob->next;
+                }
+                break;
+            case FG:;
+                args = currentProgram->args;
+                char* jidString = *(args+1);
+                if(*jidString != '%'){
+                    printf(SYNTAX_ERROR,"JID must be preceded by '%'.");
+                    break;
+                }
+                int jid = strtol(jidString+1,NULL,10);
+                if(jid == 0){
+                    printf(SYNTAX_ERROR, "JID must be a valid number.");
+                    break;
+                }
+                currJob = getHead();
+                while(currJob){
+                    if(currJob->jobNum == jid){
+                        kill(currJob->pid,SIGCONT);
+                        break;
+                    }
+                    currJob=currJob->next;
+                }
+                break;
 
             default:;
+
+///////////////////////PROGRAM IS RUN///////////////////////
 
             //RUNS A PROGRAM
             program* test = currentProgram;
             int numPrograms = 0;
+            //Loop to find number of programs;
             while(test!= NULL){
                 numPrograms++;
                 test = test->next;
             }
+
+            //Loop for piping
+
             while(currentProgram != NULL){
                 //ERROR TESTING
                 if(strcmp(currentProgram->name, ">") == 0){
@@ -181,26 +222,43 @@ int main(int argc, char *argv[], char* envp[]) {
                     printf(SYNTAX_ERROR,"Cannot use > as program argument!");
                     break;
                 }
-                pipe(pfd);
+                if(currentProgram->programType != PROGRAM){
+                    printf(SYNTAX_ERROR,"Cannot use this program here");
+                    break;
+                }
 
+                //make a pipe
+                pipe(pfd);
+                sigset_t mask, prev;
+                signal(SIGCHLD, &sigchld_handler);
+                signal(SIGINT, &sigint_handler);
+                signal(SIGTSTP, &sigtstp_handler);
+                sigemptyset(&mask);
+                sigaddset(&mask,SIGCHLD);
+                sigaddset(&mask,SIGTSTP);
+                sigaddset(&mask,SIGINT);
+                sigprocmask(SIG_BLOCK,&mask,&prev);
                 if((pid = fork()) == 0){
-                //CHILD
+        ///////////CHILD//////////////
+                   /////
                     dup2(ifd,0);
                     if(currentProgram->next != NULL){
                         //THERE ARE MORE PROGRAMS
                         if(currentProgram->itype != NONE){
                             if(i > 0){
                                 printf(SYNTAX_ERROR, "Cannot have input here!");
+                                exit(3);
                                 break;
                             }
                             if((ifd = open(currentProgram->infile, O_RDONLY)) == -1){
                                 printf(SYNTAX_ERROR, "No such input file or directory!");
-                                exit(0);
+                                exit(3);
                             }
                             dup2(ifd,0);
                         }
                         if(currentProgram->otype != NONE){
                             printf(SYNTAX_ERROR, "Cannot have output here!");
+                            exit(3);
                             break;
                         }
                     }
@@ -210,11 +268,12 @@ int main(int argc, char *argv[], char* envp[]) {
                             if(numPrograms > 1){
                                 //There is more than one program, so this must be the last program
                                 printf(SYNTAX_ERROR, "Cannot have input here!");
+                                exit(3);
                                 break;
                             }
                             if((ifd = open(currentProgram->infile, O_RDONLY)) == -1){
                                 printf(EXEC_ERROR, "No such input file or directory!");
-                                exit(0);
+                                exit(3);
                             }
                             dup2(ifd,0);
                         }
@@ -228,17 +287,37 @@ int main(int argc, char *argv[], char* envp[]) {
                         dup2(pfd[1],1);
                     }
                     close(pfd[0]);
+                    sigprocmask(SIG_SETMASK,&prev,NULL);
                     if(execvp(currentProgram->name,currentProgram->args) == -1){
-                        printf(EXEC_ERROR, "Invalid program");
+                        if(errno == 2){
+                            printf(EXEC_NOT_FOUND,currentProgram->name);
+                        }
+                        else{
+                            printf(EXEC_ERROR, "Could not run exec");
+                        }
                     }
-                    exit(0);
+                    exit(3);
                 }
 
                 else{
-                 //PARENT
-                    //install signal handler for SIGCHILD
-                    signal(SIGCHLD, &sigchild_handler);
-                    wait(&child_status);
+
+            ////////PARENT///////
+                    //////
+                    //install signal handler for SIGCHLD
+
+                    //SET THE CURRENT JOB
+                    if(i == 0){ //first job
+                        pgid = pid;
+                        setJob(pid,pid,currentProgram->name);
+                        setpgid(pid,pid);
+                        tcsetpgrp(STDOUT_FILENO,pgid);
+                    }
+                    else{
+                        setJob(pid,pgid,currentProgram->name);
+                        setpgid(pid,pgid);
+                    }
+                    sigsuspend(&prev);
+                    sigprocmask(SIG_SETMASK,&prev,NULL);
                     close(pfd[1]);
                     ifd = pfd[0];
                     currentProgram = currentProgram->next;
@@ -256,10 +335,9 @@ int main(int argc, char *argv[], char* envp[]) {
         // Readline mallocs the space for input. You must free it.
         rl_free(input);
         free(input2);
-
+        signal(SIGTTOU, SIG_IGN);
+        tcsetpgrp(STDOUT_FILENO,mypgid);
     } while(!exited);
-
-    debug("%s", "user entered 'exit'");
 
     return EXIT_SUCCESS;
 }

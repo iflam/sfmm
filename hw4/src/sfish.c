@@ -4,8 +4,11 @@
 #include <signal.h>
 #include "sfish.h"
 #include <sys/wait.h>
-
+#include <unistd.h>
+#include <sys/types.h>
 job *head;
+job *currentJob;
+int jobNum;
 char* makePrompt(char* cwd, char* homedir){
     char* occ;
     char* netid = "iflam";
@@ -53,6 +56,7 @@ program* programify(char* input){
     memset(currVal,0,sizeof(char));
     char* currChar = input;
     char** args = malloc((strlen(input) + 1)*sizeof(char*));
+    memset(args,0,sizeof(char));
     int argNum = 0;
     bool hasRed = false;
     while(*currChar != '\0'){
@@ -84,6 +88,15 @@ program* programify(char* input){
                 else if((strcmp(currVal,"exit"))==0){
                     exit(3);
                 }
+                else if((strcmp(currVal,"jobs"))==0){
+                    currProg->programType = JOBS;
+                }
+                else if((strcmp(currVal,"fg"))==0){
+                    currProg->programType = FG;
+                }
+                else if((strcmp(currVal,"kill"))==0){
+                    currProg->programType = KILL;
+                }
                 else{
                     currProg->programType = PROGRAM;
                 }
@@ -105,14 +118,18 @@ program* programify(char* input){
                 }
                 break;
             case ARG:
-                args[argNum] = strdup(currVal);
-                argNum++;
+                    if((strcmp(currVal,"")) != 0){
+                        args[argNum] = strdup(currVal);
+                        argNum++;
+                    }
                 switch(*currChar){
                     case '<':
                         tok = IN;
+                        currChar++;
                         break;
                     case '>':
                         tok = OUT;
+                        currChar++;
                         break;
                     default:
                         break;
@@ -176,7 +193,7 @@ program* programify(char* input){
             break;
         }
     }
-    // args[argNum] == '\0';
+    args[argNum] = '\0';
     currProg->args = args;
     return currProg;
 }
@@ -199,11 +216,90 @@ program* makePrograms(char* input){
     return firstProgram;
 }
 
-void sigchild_handler(){
-    job *cJob = head;
-    int s;
-    while(cJob){
-        waitpid(cJob->pid,&s,WNOHANG);
+job* getJob(pid_t pid){
+    job* currentptr = head;
+    while(currentptr){
+        if(currentptr->pid == pid)
+            return currentptr;
+    }
+    return NULL;
+}
+
+job* getHead(){
+    return head;
+}
+
+void setJob(pid_t pid, pid_t pgid, char* name){
+    if(!currentJob){
+        currentJob = malloc(sizeof(job));
+    }
+    job* job = currentJob;
+    job->pid = pid;
+    job->pgid = pgid;
+    job->name = name;
+}
+
+void removeJob(pid_t pid){
+    job* prevptr = NULL;
+    job* currentptr = head;
+    while(currentptr){
+        if(currentptr->pid == pid){
+            if(!prevptr){
+                head = currentptr->next;
+            }
+            else{
+                prevptr->next = currentptr->next;
+            }
+            break;
+        }
+        prevptr = currentptr;
+        currentptr = currentptr->next;
     }
 }
+
+void addJob(job* nJob){
+    job* currJob = malloc(sizeof(job));
+    currJob->pid = nJob->pid;
+    currJob->pgid = nJob->pgid;
+    currJob->name = nJob->name;
+    if(!head){
+        jobNum = 1;
+        currJob->next = NULL;
+        currJob->jobNum = jobNum;
+        head = currJob;
+    }
+    else{
+        currJob->next = head;
+        currJob->jobNum = jobNum;
+        head = currJob;
+    }
+    jobNum++;
+}
+void sigint_handler(){
+    kill(currentJob->pid,SIGINT);
+}
+
+void sigtstp_handler(){
+    puts("BLOOBIDYBLOO");
+    int status;
+    waitpid(-1,&status,WNOHANG);
+
+    addJob(currentJob);
+    setpgid(currentJob->pid,currentJob->pid);
+    kill(currentJob->pid,SIGTSTP);
+}
+
+void sigchld_handler(int sig){
+    int status;
+    int x = WIFEXITED(status);
+    int y = WEXITSTATUS(status);
+    if(x != 0){
+        puts("hi");
+    }
+    else{
+            puts("bye");
+            sigtstp_handler();
+    }
+}
+
 
