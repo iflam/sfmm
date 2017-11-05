@@ -23,6 +23,7 @@ int main(int argc, char *argv[], char* envp[]) {
     int stdout = 1;
     int stderr = 2;
     int mypgid = getpgid(getpid());
+    setParentJob(getpid(),mypgid,*argv);
     unsetenv("OLDPWD");
     if (getcwd(cwd, sizeof(cwd)) == NULL)
        perror("getcwd() error");
@@ -174,6 +175,10 @@ int main(int argc, char *argv[], char* envp[]) {
             case FG:;
                 args = currentProgram->args;
                 char* jidString = *(args+1);
+                if(!jidString){
+                    printf(SYNTAX_ERROR,"Must have a JID");
+                    break;
+                }
                 if(*jidString != '%'){
                     printf(SYNTAX_ERROR,"JID must be preceded by '%'.");
                     break;
@@ -186,13 +191,46 @@ int main(int argc, char *argv[], char* envp[]) {
                 currJob = getHead();
                 while(currJob){
                     if(currJob->jobNum == jid){
-                        kill(currJob->pid,SIGCONT);
+                        setJob(currJob->pid,currJob->pgid,currJob->name);
+                        int x = tcsetpgrp(STDOUT_FILENO,pgid);
+                        printf("%i",x);
+                        kill(currJob->pgid,SIGCONT);
+                        removeJob(currJob->pid);
                         break;
                     }
                     currJob=currJob->next;
                 }
                 break;
-
+            case KILL:;
+                args = currentProgram->args;
+                char* idString = *(args+1);
+                int id;
+                if(*idString != '%'){
+                    //is a PID
+                    id = strtol(idString,NULL,10);
+                    if(id ==0){
+                        printf(SYNTAX_ERROR, "Invalid PID.");
+                        break;
+                    }
+                }
+                else{
+                    //is a JID
+                    id = strtol(idString+1,NULL,10);
+                    if(id ==0){
+                        printf(SYNTAX_ERROR, "Invalid JID.");
+                        break;
+                    }
+                    currJob = getHead();
+                    while(currJob){
+                        if(currJob->jobNum == id){
+                            id = currJob->pid;
+                            break;
+                        }
+                    }
+                }
+                kill(id,SIGKILL);
+                removeJob(id);
+                break;
             default:;
 
 ///////////////////////PROGRAM IS RUN///////////////////////
@@ -233,10 +271,12 @@ int main(int argc, char *argv[], char* envp[]) {
                 signal(SIGCHLD, &sigchld_handler);
                 signal(SIGINT, &sigint_handler);
                 signal(SIGTSTP, &sigtstp_handler);
+                signal(SIGCONT, &sigcont_handler);
                 sigemptyset(&mask);
                 sigaddset(&mask,SIGCHLD);
                 sigaddset(&mask,SIGTSTP);
                 sigaddset(&mask,SIGINT);
+                sigaddset(&mask,SIGCONT);
                 sigprocmask(SIG_BLOCK,&mask,&prev);
                 if((pid = fork()) == 0){
         ///////////CHILD//////////////

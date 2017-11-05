@@ -8,6 +8,7 @@
 #include <sys/types.h>
 job *head;
 job *currentJob;
+job* parentJob;
 int jobNum;
 char* makePrompt(char* cwd, char* homedir){
     char* occ;
@@ -61,15 +62,19 @@ program* programify(char* input){
     bool hasRed = false;
     while(*currChar != '\0'){
         while(*currChar == ' '){
+            //GO UNTIL NO MORE SPACES - account for multiple whitespace.
             currChar++;
         }
         if(*currChar == '\0'){
+            //IF REACHED END OF STRING
             break;
         }
         while(*currChar != ' ' && *currChar != '\0' && *currChar != '<' && *currChar != '>'){
+            //Loop until we find a ' ', '\0', '<' or '>', and we add the current char into currVal.
             strncat(currVal, currChar,1);
             currChar++;
         }
+        //WE HAVE AN IMPORTANT CHARACTER
         switch(tok){
             case PROG:
             //make it the program one
@@ -216,6 +221,13 @@ program* makePrograms(char* input){
     return firstProgram;
 }
 
+void setParentJob(pid_t pid, pid_t pgid, char* name){
+    parentJob = malloc(sizeof(job));
+    parentJob->pid = pid;
+    parentJob->pgid = pgid;
+    parentJob->name = name;
+}
+
 job* getJob(pid_t pid){
     job* currentptr = head;
     while(currentptr){
@@ -279,25 +291,34 @@ void sigint_handler(){
     kill(currentJob->pid,SIGINT);
 }
 
+void sigcont_handler(){
+    puts("SIGCONTYAYAY");
+}
+
 void sigtstp_handler(){
     puts("BLOOBIDYBLOO");
     int status;
     waitpid(-1,&status,WNOHANG);
-
     addJob(currentJob);
-    setpgid(currentJob->pid,currentJob->pid);
     kill(currentJob->pid,SIGTSTP);
 }
 
 void sigchld_handler(int sig){
     int status;
+    waitpid((-1), &status, WNOHANG|WUNTRACED);
     int x = WIFEXITED(status);
-    int y = WEXITSTATUS(status);
-    if(x != 0){
-        puts("hi");
+    int y = WIFSIGNALED(status);
+    if(y){
+        y = WTERMSIG(status);
+    }
+    if(x != 0 || y == 9){
+        puts("SIGKILL or SIGCHLD");
+    }
+    else if(y == 25){
+        puts("Maybe SIGCONT idk?");
     }
     else{
-            puts("bye");
+            puts("SIGTSTP");
             sigtstp_handler();
     }
 }
