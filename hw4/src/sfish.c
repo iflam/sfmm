@@ -292,34 +292,37 @@ void sigint_handler(){
 }
 
 void sigcont_handler(){
-    puts("SIGCONTYAYAY");
 }
 
 void sigtstp_handler(){
-    puts("BLOOBIDYBLOO");
     int status;
     waitpid(-1,&status,WNOHANG);
     addJob(currentJob);
     kill(currentJob->pid,SIGTSTP);
 }
 
+void sigttin_handler(){
+}
+
 void sigchld_handler(int sig){
-    int status;
-    waitpid((-1), &status, WNOHANG|WUNTRACED);
-    int x = WIFEXITED(status);
-    int y = WIFSIGNALED(status);
-    if(y){
-        y = WTERMSIG(status);
-    }
-    if(x != 0 || y == 9){
-        puts("SIGKILL or SIGCHLD");
-    }
-    else if(y == 25){
-        puts("Maybe SIGCONT idk?");
-    }
-    else{
-            puts("SIGTSTP");
-            sigtstp_handler();
+    while(1){
+        int status;
+        pid_t pid = waitpid(-1, &status, WNOHANG|WUNTRACED);
+        int x = WIFEXITED(status);
+        int y = WIFSIGNALED(status);
+        if(pid<=0){
+            break;
+        }
+        if(y){
+            y = WTERMSIG(status);
+        }
+        if(x != 0 || y == 9){
+        }
+        else if(y == 25){
+        }
+        else{
+                sigtstp_handler();
+        }
     }
 }
 

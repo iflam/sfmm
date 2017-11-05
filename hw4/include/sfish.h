@@ -50,6 +50,7 @@ char* makePrompt(char* cwd, char* homedir);
 program* programify(char* input);
 program* makePrograms(char* input);
 void setParentJob();
+void sigttin_handler();
 void sigcont_handler();
 void sigchld_handler();
 void sigint_handler();

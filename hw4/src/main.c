@@ -43,12 +43,13 @@ int main(int argc, char *argv[], char* envp[]) {
     do {
         signal(SIGINT,SIG_IGN);
         signal(SIGTSTP,SIG_IGN);
+        signal(SIGTTIN,&sigttin_handler);
         input = readline(prompt);
 
-        write(1, "\e[s", strlen("\e[s"));
-        write(1, "\e[20;10H", strlen("\e[20;10H"));
+        //write(1, "\e[s", strlen("\e[s"));
+        //write(1, "\e[20;10H", strlen("\e[20;10H"));
         //write(1, "SomeText", strlen("SomeText"));
-        write(1, "\e[u", strlen("\e[u"));
+        //write(1, "\e[u", strlen("\e[u"));
         // If EOF is read (aka ^D) readline returns NULL
         if(input == NULL) {
             puts("");
@@ -191,15 +192,14 @@ int main(int argc, char *argv[], char* envp[]) {
                 currJob = getHead();
                 while(currJob){
                     if(currJob->jobNum == jid){
-                        setJob(currJob->pid,currJob->pgid,currJob->name);
-                        int x = tcsetpgrp(STDOUT_FILENO,pgid);
-                        printf("%i",x);
-                        kill(currJob->pgid,SIGCONT);
-                        removeJob(currJob->pid);
                         break;
                     }
                     currJob=currJob->next;
                 }
+                setJob(currJob->pid,currJob->pgid,currJob->name);
+                tcsetpgrp(STDOUT_FILENO,currJob->pgid);
+                kill(currJob->pid,SIGCONT);
+                removeJob(currJob->pid);
                 break;
             case KILL:;
                 args = currentProgram->args;
@@ -271,7 +271,7 @@ int main(int argc, char *argv[], char* envp[]) {
                 signal(SIGCHLD, &sigchld_handler);
                 signal(SIGINT, &sigint_handler);
                 signal(SIGTSTP, &sigtstp_handler);
-                signal(SIGCONT, &sigcont_handler);
+                //signal(SIGTTIN,SIG_IGN);
                 sigemptyset(&mask);
                 sigaddset(&mask,SIGCHLD);
                 sigaddset(&mask,SIGTSTP);
