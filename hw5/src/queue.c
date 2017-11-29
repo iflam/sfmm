@@ -1,5 +1,6 @@
 #include "queue.h"
 #include "pthread.h"
+#include <errno.h>
 
 /*
 typedef struct queue_node_t {
@@ -30,6 +31,10 @@ queue_t *create_queue(void) {
 }
 
 bool invalidate_queue(queue_t *self, item_destructor_f destroy_function) {
+    if(self == NULL || destroy_function == NULL){
+        errno = EINVAL;
+        return false;
+    }
     queue_node_t *curr_node = self->front;
     queue_node_t *prev_node;
     pthread_mutex_lock(&self->lock);
@@ -42,12 +47,19 @@ bool invalidate_queue(queue_t *self, item_destructor_f destroy_function) {
             free(prev_node);
         }
         self->invalid = true;
+        pthread_mutex_unlock(&self->lock);
+        return true;
     }
     pthread_mutex_unlock(&self->lock);
-    return true;
+    errno = EINVAL;
+    return false;
 }
 
 bool enqueue(queue_t *self, void *item) {
+    if(self == NULL || item == NULL){
+        errno = EINVAL;
+        return false;
+    }
     queue_node_t *new_node;
     if((new_node = (queue_node_t*)calloc(1,sizeof(queue_node_t))) == NULL){
         return false;
@@ -55,6 +67,12 @@ bool enqueue(queue_t *self, void *item) {
     new_node->item = item;
     new_node->next = NULL;
     pthread_mutex_lock(&self->lock);
+    if(self->invalid){
+        free(new_node);
+        errno = EINVAL;
+        pthread_mutex_unlock(&self->lock);
+        return false;
+    }
     int size;
     sem_getvalue(&self->items,&size);
     if(size == 0){
@@ -71,11 +89,20 @@ bool enqueue(queue_t *self, void *item) {
 }
 
 void *dequeue(queue_t *self) {
+    if(!self){
+        errno = EINVAL;
+        return false;
+    }
     if(self->front == NULL){
         return NULL;
     }
     queue_node_t *prev_node;
     pthread_mutex_lock(&self->lock);
+    if(self->invalid){
+        errno = EINVAL;
+        pthread_mutex_unlock(&self->lock);
+        return false;
+    }
     int size;
     void* item = self->front->item;
     sem_getvalue(&self->items,&size);

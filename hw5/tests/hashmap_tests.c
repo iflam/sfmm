@@ -51,6 +51,12 @@ void *thread_put(void *arg) {
     return NULL;
 }
 
+void *thread_delete(void *arg){
+    map_insert_t *insert = (map_insert_t *) arg;
+    delete(global_map, MAP_KEY(insert->key_ptr, sizeof(int)));
+    return NULL;
+}
+
 void map_fini(void) {
     invalidate_map(global_map);
 }
@@ -84,4 +90,43 @@ Test(map_suite, 02_multithreaded, .timeout = 2, .init = map_init, .fini = map_fi
 
     int num_items = global_map->size;
     cr_assert_eq(num_items, NUM_THREADS, "Had %d items in map. Expected %d", num_items, NUM_THREADS);
+}
+Test(map_suite, delete_node, .timeout = 2, .init = map_init, .fini = map_fini){
+    pthread_t thread_ids[NUM_THREADS];
+
+    // spawn NUM_THREADS threads to put elements
+    for(int index = 0; index < NUM_THREADS; index++) {
+        int *key_ptr = malloc(sizeof(int));
+        int *val_ptr = malloc(sizeof(int));
+        *key_ptr = index;
+        *val_ptr = index * 2;
+
+        map_insert_t *insert = malloc(sizeof(map_insert_t));
+        insert->key_ptr = key_ptr;
+        insert->val_ptr = val_ptr;
+
+        if(pthread_create(&thread_ids[index], NULL, thread_put, insert) != 0)
+            exit(EXIT_FAILURE);
+    }
+    for(int index = 0; index < NUM_THREADS; index++) {
+        pthread_join(thread_ids[index], NULL);
+    }
+    for(int index = 0; index < NUM_THREADS; index++) {
+        int *key_ptr = malloc(sizeof(int));
+        int *val_ptr = malloc(sizeof(int));
+        *key_ptr = index;
+        *val_ptr = index * 2;
+
+        map_insert_t *insert = malloc(sizeof(map_insert_t));
+        insert->key_ptr = key_ptr;
+        insert->val_ptr = val_ptr;
+
+        if(pthread_create(&thread_ids[index], NULL, thread_delete, insert) != 0)
+            exit(EXIT_FAILURE);
+    }
+    for(int index = 0; index < NUM_THREADS; index++) {
+        pthread_join(thread_ids[index], NULL);
+    }
+    int num_items = global_map->size;
+    cr_assert_eq(num_items, 0, "Had %d items in map. Expected %d", num_items, 0);
 }
