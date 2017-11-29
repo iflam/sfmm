@@ -1,18 +1,125 @@
 #include "utils.h"
+#include <errno.h>
+#include <string.h>
 
 #define MAP_KEY(base, len) (map_key_t) {.key_base = base, .key_len = len}
 #define MAP_VAL(base, len) (map_val_t) {.val_base = base, .val_len = len}
 #define MAP_NODE(key_arg, val_arg, tombstone_arg) (map_node_t) {.key = key_arg, .val = val_arg, .tombstone = tombstone_arg}
 
-hashmap_t *create_map(uint32_t capacity, hash_func_f hash_function, destructor_f destroy_function) {
-    return NULL;
-}
+/*
+typedef struct map_node_t {
+    map_key_t key;
+    map_val_t val;
+    bool tombstone;
+} map_node_t;
 
-bool put(hashmap_t *self, map_key_t key, map_val_t val, bool force) {
+typedef struct hashmap_t {
+    uint32_t capacity;
+    uint32_t size;
+    map_node_t *nodes;
+    hash_func_f hash_function;
+    destructor_f destroy_function;
+    int num_readers;
+    pthread_mutex_t write_lock;
+    pthread_mutex_t fields_lock;
+    bool invalid;
+} hashmap_t;
+*/
+
+bool canPut(map_node_t node, map_node_t compare){
+    if(node.tombstone){
+        return true;
+    }
+    if((node.key).key_len == 0 && (node.val).val_len == 0){
+        return true;
+    }
+    if(node.key.key_len == compare.key.key_len){
+        if(memcmp(node.key.key_base, compare.key.key_base, node.key.key_len)){
+            return true;
+        }
+    }
     return false;
 }
 
+bool isFull(hashmap_t *map){
+    for(int i = 0; i < map->capacity; i++){
+        if(map->nodes[i].key.key_len == 0){
+            return false;
+        }
+    }
+    return true;
+}
+
+bool hasVal(map_node_t node){
+    if(node.key.key_len == 0){
+        return false;
+    }
+    return true;
+}
+hashmap_t *create_map(uint32_t capacity, hash_func_f hash_function, destructor_f destroy_function) {
+    hashmap_t *new_map;
+    if((new_map = (hashmap_t*)calloc(1,sizeof(hashmap_t))) == NULL){
+        return NULL;
+    }
+    new_map->capacity = capacity;
+    new_map->nodes = (map_node_t*)calloc(capacity,sizeof(map_node_t));
+    new_map->destroy_function = destroy_function;
+    new_map->hash_function = hash_function;
+    if(pthread_mutex_init(&new_map->write_lock,NULL) != 0 || pthread_mutex_init(&new_map->fields_lock,NULL) != 0){
+        return NULL;
+    }
+    return new_map;
+}
+
+bool put(hashmap_t *self, map_key_t key, map_val_t val, bool force) {
+    if(!self || self->invalid ||!key.key_base||
+        !val.val_base|| key.key_len == 0 || val.val_len == 0){
+        errno = EINVAL;
+        return false;
+    }
+    map_node_t new_node;
+    new_node.key = key;
+    new_node.val = val;
+    new_node.tombstone = false;
+    pthread_mutex_lock(&self->write_lock);
+    int hash_index = get_index(self,key);
+    if(!isFull(self)){
+        while(!canPut(self->nodes[hash_index],new_node)){
+            //while self->nodes[hash_index] is not empty...
+            hash_index++;
+        }
+    }
+    else{
+        if(!force){
+            errno = ENOMEM;
+            return false;
+        }
+    }
+    if(hasVal(self->nodes[hash_index])){
+        self->destroy_function(self->nodes[hash_index].key,self->nodes[hash_index].val);
+    }
+    self->nodes[hash_index].key = key;
+    self->nodes[hash_index].val = val;
+    return true;
+}
+
 map_val_t get(hashmap_t *self, map_key_t key) {
+    if(self->invalid || !self || !key.key_base || key.key_len == 0){
+        errno = EINVAL;
+        return MAP_VAL(NULL,0);
+    }
+    int hash_index = get_index(self,key);
+    int initial_index = hash_index;
+    while(self->nodes[hash_index].key.key_len != 0){
+        if(self->nodes[hash_index].key.key_len == key.key_len){
+            if(memcmp(self->nodes[hash_index].key.key_base,key.key_base,key.key_len)){
+                return self->nodes[hash_index].val;
+            }
+        }
+        hash_index++;
+        if(initial_index == hash_index)
+            break;
+    }
     return MAP_VAL(NULL, 0);
 }
 
