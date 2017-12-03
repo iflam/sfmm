@@ -43,6 +43,7 @@ typedef struct hashmap_t {
     bool invalid;
 } hashmap_t;
 
+bool isFull(hashmap_t *map);
 /*
  * Create a new hash map.
  *

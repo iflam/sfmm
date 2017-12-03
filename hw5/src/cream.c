@@ -6,6 +6,7 @@
 #include "string.h"
 #include <sys/socket.h>
 #include "csapp.h"
+#include "errno.h"
 
 queue_t *queue;
 hashmap_t *hashmap;
@@ -17,6 +18,7 @@ void map_free_function(map_key_t key, map_val_t val);
 
 
 int main(int argc, char *argv[]) {
+    signal(SIGPIPE,SIG_IGN);
     int num_workers;
     int max_items;
     int listenfd, connfd;
@@ -88,15 +90,123 @@ void handle_request(int connfd){
     pthread_once(&once, init_echo_cnt);
     request_header_t *header = malloc(sizeof(request_header_t));
     Rio_readn(connfd,header,sizeof(request_header_t));
-    map_key_t *key = malloc(sizeof(map_key_t));
-    map_val_t *val = malloc(sizeof(map_val_t));
-    key->key_base = malloc(sizeof(header->key_size));
-    val->val_base = malloc(sizeof(header->value_size));
-    Rio_readn(connfd,key->key_base,header->key_size);
-    key->key_len = header->key_size;
-    Rio_readn(connfd,val->val_base,header->value_size);
-    val->val_len = header->value_size;
-
+    response_header_t *response = malloc(sizeof(response_header_t));
+    switch(header->request_code){
+        case PUT:;
+            if(!(header->key_size >= MIN_KEY_SIZE && header->key_size <= MAX_KEY_SIZE && header->value_size >= MIN_VALUE_SIZE && header->value_size <= MAX_VALUE_SIZE)){
+                response->response_code = BAD_REQUEST;
+                response->value_size = 0;
+                goto write_put;
+            }
+            map_key_t *key = malloc(sizeof(map_key_t));
+            map_val_t *val = malloc(sizeof(map_val_t));
+            key->key_base = malloc(sizeof(header->key_size));
+            val->val_base = malloc(sizeof(header->value_size));
+            Rio_readn(connfd,key->key_base,header->key_size);
+            key->key_len = header->key_size;
+            Rio_readn(connfd,val->val_base,header->value_size);
+            val->val_len = header->value_size;
+            if(isFull(hashmap)){
+                if(put(hashmap,*key,*val,true)){
+                    response->response_code = OK;
+                    response->value_size = 0;
+                }
+                else{
+                    response->response_code = BAD_REQUEST;
+                    response->value_size = 0;
+                }
+            }
+            else{
+                if(put(hashmap,*key,*val,false)){
+                    response->response_code = OK;
+                    response->value_size = 0;
+                }
+                else{
+                    response->response_code = BAD_REQUEST;
+                    response->value_size = 0;
+                }
+            }
+            write_put:
+            if(errno == EPIPE)
+                goto skip;
+            Rio_writen(connfd,response,sizeof(response));
+            break;
+        case GET:;
+            if(header->key_size < MIN_KEY_SIZE || header->key_size > MAX_KEY_SIZE){
+                response->response_code = BAD_REQUEST;
+                response->value_size = 0;
+                if(errno == EPIPE)
+                    goto skip;
+                Rio_writen(connfd,response,sizeof(response));
+                goto end;
+            }
+            map_key_t *get_key = malloc(sizeof(map_key_t));
+            get_key->key_base = malloc(sizeof(header->key_size));
+            Rio_readn(connfd,get_key->key_base,header->key_size);
+            get_key->key_len = header->key_size;
+            map_val_t rval = get(hashmap,*get_key);
+            if(!rval.val_base){
+                //ERROR
+                response->response_code = NOT_FOUND;
+                response->value_size = 0;
+                if(errno == EPIPE)
+                    goto skip;
+                Rio_writen(connfd,response,sizeof(response));
+            }
+            else{
+                response->response_code = OK;
+                response->value_size = rval.val_len;
+                if(errno == EPIPE)
+                    goto skip;
+                Rio_writen(connfd,response,sizeof(response));
+                if(errno == EPIPE)
+                    goto skip;
+                Rio_writen(connfd,rval.val_base,rval.val_len);
+            }
+            free(get_key->key_base);
+            free(get_key);
+            end:
+            break;
+        case EVICT:
+            if(header->key_size < MIN_KEY_SIZE || header->key_size > MAX_KEY_SIZE){
+                response->response_code = BAD_REQUEST;
+                response->value_size = 0;
+                goto write_evict;
+            }
+            map_key_t *evict_key = malloc(sizeof(map_key_t));
+            evict_key->key_base = malloc(sizeof(header->key_size));
+            Rio_readn(connfd,evict_key->key_base,header->key_size);
+            evict_key->key_len = header->key_size;
+            delete(hashmap,*evict_key);
+            response->response_code = OK;
+            response->value_size = 0;
+            write_evict:
+            if(errno == EPIPE)
+                goto skip;
+            Rio_writen(connfd,response,sizeof(response));
+            free(evict_key->key_base);
+            free(evict_key);
+            break;
+        case CLEAR:
+            clear_map(hashmap);
+            response->response_code = OK;
+            response->value_size = 0;
+            if(errno == EPIPE)
+                goto skip;
+            Rio_writen(connfd,response,sizeof(response));
+            break;
+        default:
+            response->response_code = UNSUPPORTED;
+            response->value_size = 0;
+            if(errno == EPIPE)
+                goto skip;
+            Rio_writen(connfd, response, sizeof(response));
+            break;
+    }
+    skip:
+    free(response);
+    free(header);
+    return;
 }
 
 void map_free_function(map_key_t key, map_val_t val) {
