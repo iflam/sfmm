@@ -132,21 +132,35 @@ map_val_t get(hashmap_t *self, map_key_t key) {
 
     if(!self || !key.key_base || key.key_len == 0){
         errno = EINVAL;
+        self->num_readers--;
+        if(self->num_readers == 0){
+            pthread_mutex_unlock(&self->write_lock);
+        }
+        pthread_mutex_unlock(&self->fields_lock);
         return MAP_VAL(NULL,0);
     }
     int hash_index = get_index(self,key);
     int initial_index = hash_index;
-    pthread_mutex_lock(&self->write_lock);
     if(self->invalid){
         errno = EINVAL;
-        pthread_mutex_unlock(&self->write_lock);
+        pthread_mutex_lock(&self->fields_lock);
+        self->num_readers--;
+        if(self->num_readers == 0){
+            pthread_mutex_unlock(&self->write_lock);
+        }
+        pthread_mutex_unlock(&self->fields_lock);
         return MAP_VAL(NULL,0);
     }
     while(self->nodes[hash_index].key.key_len != 0){
         if(!self->nodes[hash_index].tombstone){
             if(self->nodes[hash_index].key.key_len == key.key_len){
                 if(memcmp(self->nodes[hash_index].key.key_base,key.key_base,key.key_len) == 0){
-                    pthread_mutex_unlock(&self->write_lock);
+                    pthread_mutex_lock(&self->fields_lock);
+                    self->num_readers--;
+                    if(self->num_readers == 0){
+                        pthread_mutex_unlock(&self->write_lock);
+                    }
+                    pthread_mutex_unlock(&self->fields_lock);
                     return self->nodes[hash_index].val;
                 }
             }
@@ -190,6 +204,7 @@ map_node_t delete(hashmap_t *self, map_key_t key) {
             break;
     }
     pthread_mutex_unlock(&self->write_lock);
+    errno = EINVAL;
     return MAP_NODE(MAP_KEY(NULL, 0), MAP_VAL(NULL, 0), false);
 }
 
@@ -210,6 +225,7 @@ bool clear_map(hashmap_t *self) {
         }
     }
     memset(self->nodes,0,self->capacity*sizeof(map_node_t));
+    self->size = 0;
     pthread_mutex_unlock(&self->write_lock);
 	return true;
 }

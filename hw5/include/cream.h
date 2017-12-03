@@ -28,4 +28,7 @@ typedef struct response_header_t {
 
 typedef enum response_codes { OK = 200, UNSUPPORTED = 220, BAD_REQUEST = 400, NOT_FOUND = 404 } response_codes;
 
+char* help_message = "./cream [-h] NUM_WORKERS PORT_NUMBER MAX_ENTRIES\n-h\tDisplays this help menu and returns EXIT_SUCCESS.\nNUM_WORKERS\tThe number of worker threads used to service requests.\nPORT_NUMBER\tPort number to listen on for incoming connections.\nMAX_ENTRIES\tThe maximum number of entries that can be stored in `cream`'s underlying data store.";
+
+
 #endif

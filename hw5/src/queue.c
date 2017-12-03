@@ -93,9 +93,7 @@ void *dequeue(queue_t *self) {
         errno = EINVAL;
         return false;
     }
-    if(self->front == NULL){
-        return NULL;
-    }
+    sem_wait(&self->items);
     queue_node_t *prev_node;
     pthread_mutex_lock(&self->lock);
     if(self->invalid){
@@ -110,7 +108,7 @@ void *dequeue(queue_t *self) {
         prev_node = self->front;
         self->front = self->front->next;
         free(prev_node);
-        sem_wait(&self->items);
+        //sem_wait(&self->items);
         if(size == 1){
             self->rear = self->front;
         }
