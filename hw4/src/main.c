@@ -197,8 +197,8 @@ int main(int argc, char *argv[], char* envp[]) {
                     currJob=currJob->next;
                 }
                 setJob(currJob->pid,currJob->pgid,currJob->name);
-                tcsetpgrp(STDOUT_FILENO,currJob->pgid);
                 kill(currJob->pid,SIGCONT);
+                tcsetpgrp(STDOUT_FILENO,currJob->pgid);
                 removeJob(currJob->pid);
                 break;
             case KILL:;

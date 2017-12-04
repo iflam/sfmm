@@ -1,6 +1,3 @@
 bin/
 build/
-/hw2/rsrc/out.txt
-/hw2/rsrc/someFileUTF16BE.txt
-/hw2/rsrc/someFileUTF16LE.txt
-/hw2/rsrc/someFileUTF8.txt
+
