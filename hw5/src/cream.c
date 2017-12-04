@@ -98,6 +98,8 @@ void handle_request(int connfd){
     static pthread_once_t once = PTHREAD_ONCE_INIT;
     pthread_once(&once, init_echo_cnt);
     request_header_t *header = malloc(sizeof(request_header_t));
+    if(errno == EPIPE)
+        goto skip;
     Rio_readn(connfd,header,sizeof(request_header_t));
     response_header_t *response = malloc(sizeof(response_header_t));
     switch(header->request_code){
@@ -111,8 +113,12 @@ void handle_request(int connfd){
             map_val_t *val = malloc(sizeof(map_val_t));
             key->key_base = malloc(sizeof(header->key_size));
             val->val_base = malloc(sizeof(header->value_size));
+            if(errno == EPIPE)
+                goto skip;
             Rio_readn(connfd,key->key_base,header->key_size);
             key->key_len = header->key_size;
+            if(errno == EPIPE)
+                goto skip;
             Rio_readn(connfd,val->val_base,header->value_size);
             val->val_len = header->value_size;
             if(isFull(hashmap)){
@@ -151,6 +157,8 @@ void handle_request(int connfd){
             }
             map_key_t *get_key = malloc(sizeof(map_key_t));
             get_key->key_base = malloc(sizeof(header->key_size));
+            if(errno == EPIPE)
+                goto skip;
             Rio_readn(connfd,get_key->key_base,header->key_size);
             get_key->key_len = header->key_size;
             map_val_t rval = get(hashmap,*get_key);
@@ -184,6 +192,8 @@ void handle_request(int connfd){
             }
             map_key_t *evict_key = malloc(sizeof(map_key_t));
             evict_key->key_base = malloc(sizeof(header->key_size));
+            if(errno == EPIPE)
+                goto skip;
             Rio_readn(connfd,evict_key->key_base,header->key_size);
             evict_key->key_len = header->key_size;
             delete(hashmap,*evict_key);
