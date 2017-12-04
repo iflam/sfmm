@@ -132,6 +132,7 @@ map_val_t get(hashmap_t *self, map_key_t key) {
 
     if(!self || !key.key_base || key.key_len == 0){
         errno = EINVAL;
+        pthread_mutex_lock(&self->fields_lock);
         self->num_readers--;
         if(self->num_readers == 0){
             pthread_mutex_unlock(&self->write_lock);
