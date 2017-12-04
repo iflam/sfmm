@@ -97,7 +97,6 @@ static void init_echo_cnt(void){
 void handle_request(int connfd){
     static pthread_once_t once = PTHREAD_ONCE_INIT;
     pthread_once(&once, init_echo_cnt);
-    P(&mutex);
     request_header_t *header = malloc(sizeof(request_header_t));
     Rio_readn(connfd,header,sizeof(request_header_t));
     response_header_t *response = malloc(sizeof(response_header_t));
@@ -216,7 +215,6 @@ void handle_request(int connfd){
     skip:
     free(response);
     free(header);
-    V(&mutex);
     return;
 }
 
