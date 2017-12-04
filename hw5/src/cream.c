@@ -26,13 +26,17 @@ int main(int argc, char *argv[]) {
     struct sockaddr_storage clientaddr;
     pthread_t tid;
     bool badArgs = false;
+    if(argc < 2){
+        printf("Incorrect number of arguments.\n");
+        exit(EXIT_FAILURE);
+    }
     if(strcmp(argv[1],"-h") == 0){
         printf("%s\n",help_message);
         exit(EXIT_SUCCESS);
     }
     else if(argc == 4){
         if(strcmp(argv[1],"-h") == 0){
-            puts("Incorrect number of arguments.");
+            puts("Incorrect number of arguments.\n");
             exit(EXIT_FAILURE);
         }
         char* end;
@@ -40,6 +44,8 @@ int main(int argc, char *argv[]) {
         if(strcmp(end,"\0") != 0){
             badArgs = true;
         }
+        if(num_workers < 1)
+            badArgs = true;
         // strtol(argv[2],&end,10);
         // if(strcmp(end,"\0") != 0){
         //     badArgs = true;
@@ -48,12 +54,15 @@ int main(int argc, char *argv[]) {
         if(strcmp(end,"\0") != 0){
             badArgs = true;
         }
+        if(max_items < 1){
+            badArgs = true;
+        }
     }
     else{
         badArgs = true;
     }
     if(badArgs){
-        printf("Incorrect arguments.");
+        printf("Incorrect arguments.\n");
         exit(EXIT_FAILURE);
     }
     listenfd = Open_listenfd(argv[2]);
@@ -88,6 +97,7 @@ static void init_echo_cnt(void){
 void handle_request(int connfd){
     static pthread_once_t once = PTHREAD_ONCE_INIT;
     pthread_once(&once, init_echo_cnt);
+    P(&mutex);
     request_header_t *header = malloc(sizeof(request_header_t));
     Rio_readn(connfd,header,sizeof(request_header_t));
     response_header_t *response = malloc(sizeof(response_header_t));
@@ -206,6 +216,7 @@ void handle_request(int connfd){
     skip:
     free(response);
     free(header);
+    V(&mutex);
     return;
 }
 
